@@ -1,0 +1,12 @@
+{
+  "name": "starchat",
+  "version": "1.0.0",
+  "description": "Starchat WebSocket Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}

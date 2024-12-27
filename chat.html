@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Starchat - Chat</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <style>
+    @font-face {
+      font-family: 'PressStart2P';
+      src: url('PressStart2P.ttf') format('truetype');
+    }
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'PressStart2P', monospace;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+    }
+    #chat-container {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background-color: #111;
+    }
+    #message-form {
+      display: flex;
+      padding: 10px;
+      background-color: #222;
+    }
+    #message-input {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+      background-color: #333;
+      border: none;
+      color: #fff;
+    }
+    #send-button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #fff;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    #send-button:hover {
+      background-color: #ccc;
+    }
+    .message {
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .username {
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    .highlight {
+      background-color: #fff;
+      color: #000;
+      padding: 0 4px;
+    }
+    .server-message {
+      color: #0f0; /* verde para mensagens do servidor */
+    }
+    .private-message {
+      color: #f0f; /* magenta para mensagens privadas */
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-container"></div>
+  <form id="message-form" onsubmit="sendMessage(event)">
+    <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
+    <button type="submit" id="send-button">Enviar</button>
+  </form>
+
+  <script>
+    const username = sessionStorage.getItem('username') || 'Anônimo';
+    const wsURL = location.origin.replace(/^http/, 'ws'); 
+    // Exemplo: se a página estiver em https://meusite.onrender.com,
+    // o WebSocket será em wss://meusite.onrender.com (Render cuida do SSL).
+    // Se estiver localmente em http://localhost:5000, vira ws://localhost:5000
+
+    // Se tiver problemas com a substituição, definir manualmente:
+    // const wsURL = 'ws://localhost:8080'; // Em desenvolvimento local
+
+    const ws = new WebSocket(wsURL);
+    const chatContainer = document.getElementById('chat-container');
+    const messageForm = document.getElementById('message-form');
+    const messageInput = document.getElementById('message-input');
+
+    // Assim que conectar, envia ao servidor o nosso username
+    ws.onopen = () => {
+      console.log('Conectado ao servidor WebSocket!');
+      ws.send(JSON.stringify({ type: 'setUsername', username }));
+    };
+
+    // Recebendo mensagens do servidor
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case 'chatMessage':
+          // Exibe mensagem normal de algum usuário
+          appendMessage(data.username, data.message);
+          break;
+
+        case 'serverMessage':
+          // Mensagens do servidor (ex: respostas de comandos)
+          appendServerMessage(data.message);
+          break;
+
+        case 'privateMessage':
+          // Mensagem privada para este cliente
+          appendPrivateMessage(data.from, data.message);
+          break;
+
+        case 'clearChat':
+          clearChat();
+          break;
+
+        default:
+          console.log('Tipo de mensagem desconhecido:', data);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('Desconectado do servidor WebSocket');
+      appendServerMessage('Você foi desconectado do servidor.');
+    };
+
+    // Envio de mensagem normal ou comando
+    function sendMessage(event) {
+      event.preventDefault();
+      const message = messageInput.value.trim();
+      if (message) {
+        ws.send(JSON.stringify({ 
+          type: 'chatMessage',
+          message
+        }));
+        messageInput.value = '';
+      }
+    }
+
+    // Funções de display
+    function appendMessage(user, msg) {
+      // Se houver menções @username, destaca-as
+      const finalMsg = highlightMentions(msg);
+
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message');
+      messageElement.innerHTML = `<span class="username">${user}:</span> ${finalMsg}`;
+      chatContainer.appendChild(messageElement);
+      scrollToBottom();
+    }
+
+    function appendServerMessage(msg) {
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'server-message');
+      messageElement.textContent = msg;
+      chatContainer.appendChild(messageElement);
+      scrollToBottom();
+    }
+
+    function appendPrivateMessage(from, msg) {
+      // Se houver menções @username, destaca-as
+      const finalMsg = highlightMentions(msg);
+
+      const messageElement = document.createElement('div');
+      messageElement.classList.add('message', 'private-message');
+      messageElement.innerHTML = `[PM de ${from}]: ${finalMsg}`;
+      chatContainer.appendChild(messageElement);
+      scrollToBottom();
+    }
+
+    function highlightMentions(text) {
+      // Ex: se o usuário for "Maria" e o text contiver "@Maria",
+      // iremos envolver em <span class="highlight">@Maria</span>
+      // Também realça menções a outros usuários, mas sem cor específica
+      // A ideia principal é realçar *quando* a menção é do nosso username
+      // ou qualquer @menção (ajuste conforme necessário)
+
+      // Realçar qualquer menção @palavra
+      return text.replace(/(@[^\s]+)/g, (match) => {
+        // Se a menção for do próprio username, realça mais
+        if (match.toLowerCase() === '@' + username.toLowerCase()) {
+          return `<span class="highlight">${match}</span>`;
+        }
+        // Caso contrário, apenas retorna com um estilo normal (opcional)
+        return `<span style="text-decoration: underline;">${match}</span>`;
+      });
+    }
+
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function clearChat() {
+      chatContainer.innerHTML = '';
+      appendServerMessage('O chat foi limpo.');
+    }
+  </script>
+</body>
+</html>

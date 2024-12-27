@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Starchat - Nome de Usuário</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <style>
+    @font-face {
+      font-family: 'PressStart2P';
+      src: url('PressStart2P.ttf') format('truetype');
+    }
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'PressStart2P', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
+      margin: 0;
+    }
+    input {
+      padding: 10px;
+      font-size: 16px;
+      margin-bottom: 20px;
+      width: 200px;
+      background-color: #333;
+      border: none;
+      color: #fff;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #fff;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <h1>Insira seu Nome</h1>
+  <input type="text" id="username" placeholder="Nome de usuário" maxlength="16">
+  <button onclick="proceed()">Entrar</button>
+
+  <script>
+    function proceed() {
+      const username = document.getElementById('username').value.trim();
+      if (username) {
+        sessionStorage.setItem('username', username);
+        window.location.href = 'chat.html';
+      } else {
+        alert('Por favor, insira um nome de usuário.');
+      }
+    }
+  </script>
+</body>
+</html>
