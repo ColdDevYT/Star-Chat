@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Starchat - Chat</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
       font-family: 'PressStart2P';
@@ -51,27 +51,30 @@
     }
     .message {
       margin-bottom: 10px;
-      line-height: 1.5;
+      line-height: 1.4;
     }
     .username {
       font-weight: bold;
       margin-right: 5px;
     }
-    .highlight {
-      background-color: #fff;
-      color: #000;
-      padding: 0 4px;
+    .mention {
+      color: #ff0; /* Destaque para menções */
     }
-    .server-message {
-      color: #0f0; /* verde para mensagens do servidor */
+    a {
+      color: #0ff; /* Destaque para links */
+      text-decoration: underline;
     }
-    .private-message {
-      color: #f0f; /* magenta para mensagens privadas */
+    b {
+      font-weight: bold;
+    }
+    i {
+      font-style: italic;
     }
   </style>
 </head>
 <body>
   <div id="chat-container"></div>
+
   <form id="message-form" onsubmit="sendMessage(event)">
     <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
@@ -79,128 +82,99 @@
 
   <script>
     const username = sessionStorage.getItem('username') || 'Anônimo';
-    const wsURL = location.origin.replace(/^http/, 'ws'); 
-    // Exemplo: se a página estiver em https://meusite.onrender.com,
-    // o WebSocket será em wss://meusite.onrender.com (Render cuida do SSL).
-    // Se estiver localmente em http://localhost:5000, vira ws://localhost:5000
-
-    // Se tiver problemas com a substituição, definir manualmente:
-    // const wsURL = 'ws://localhost:8080'; // Em desenvolvimento local
-
-    const ws = new WebSocket(wsURL);
     const chatContainer = document.getElementById('chat-container');
-    const messageForm = document.getElementById('message-form');
-    const messageInput = document.getElementById('message-input');
 
-    // Assim que conectar, envia ao servidor o nosso username
+    // Conexão WebSocket (ajuste a URL se estiver rodando em outro host)
+    const ws = new WebSocket(`wss://${window.location.host}`);
+
+    // Quando a conexão abre, enviamos nosso username
     ws.onopen = () => {
-      console.log('Conectado ao servidor WebSocket!');
-      ws.send(JSON.stringify({ type: 'setUsername', username }));
+      console.log('Conectado ao servidor WebSocket');
+      const connectData = {
+        type: 'connect',
+        username: username
+      };
+      ws.send(JSON.stringify(connectData));
     };
 
-    // Recebendo mensagens do servidor
+    // Recebe mensagens do servidor
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
-      switch (data.type) {
-        case 'chatMessage':
-          // Exibe mensagem normal de algum usuário
-          appendMessage(data.username, data.message);
+      switch(data.type) {
+        case 'system':
+          addSystemMessage(data.message);
           break;
-
-        case 'serverMessage':
-          // Mensagens do servidor (ex: respostas de comandos)
-          appendServerMessage(data.message);
+        case 'message':
+          addChatMessage(data.username, data.message);
           break;
-
-        case 'privateMessage':
-          // Mensagem privada para este cliente
-          appendPrivateMessage(data.from, data.message);
+        case 'private':
+          addPrivateMessage(data.from, data.message);
           break;
-
-        case 'clearChat':
+        case 'clear':
           clearChat();
           break;
-
         default:
-          console.log('Tipo de mensagem desconhecido:', data);
+          console.log('Tipo de mensagem não reconhecido:', data.type);
       }
     };
 
     ws.onclose = () => {
       console.log('Desconectado do servidor WebSocket');
-      appendServerMessage('Você foi desconectado do servidor.');
+      addSystemMessage('Você foi desconectado do servidor.');
     };
 
-    // Envio de mensagem normal ou comando
+    // Envia mensagens
     function sendMessage(event) {
       event.preventDefault();
+      const messageInput = document.getElementById('message-input');
       const message = messageInput.value.trim();
-      if (message) {
-        ws.send(JSON.stringify({ 
-          type: 'chatMessage',
-          message
-        }));
-        messageInput.value = '';
-      }
+      if(!message) return;
+
+      const data = {
+        type: 'message',
+        username: username,
+        message: message
+      };
+      ws.send(JSON.stringify(data));
+      messageInput.value = '';
     }
 
-    // Funções de display
-    function appendMessage(user, msg) {
-      // Se houver menções @username, destaca-as
-      const finalMsg = highlightMentions(msg);
-
-      const messageElement = document.createElement('div');
-      messageElement.classList.add('message');
-      messageElement.innerHTML = `<span class="username">${user}:</span> ${finalMsg}`;
-      chatContainer.appendChild(messageElement);
+    // Adiciona mensagem normal ao chat
+    function addChatMessage(sender, msg) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.innerHTML = `<span class="username">${sender}:</span> ${msg}`;
+      chatContainer.appendChild(msgDiv);
       scrollToBottom();
     }
 
-    function appendServerMessage(msg) {
-      const messageElement = document.createElement('div');
-      messageElement.classList.add('message', 'server-message');
-      messageElement.textContent = msg;
-      chatContainer.appendChild(messageElement);
+    // Adiciona mensagem do sistema
+    function addSystemMessage(msg) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.innerHTML = `<span style="color: #0f0;">[Sistema]</span> ${msg}`;
+      chatContainer.appendChild(msgDiv);
       scrollToBottom();
     }
 
-    function appendPrivateMessage(from, msg) {
-      // Se houver menções @username, destaca-as
-      const finalMsg = highlightMentions(msg);
-
-      const messageElement = document.createElement('div');
-      messageElement.classList.add('message', 'private-message');
-      messageElement.innerHTML = `[PM de ${from}]: ${finalMsg}`;
-      chatContainer.appendChild(messageElement);
+    // Adiciona mensagem privada
+    function addPrivateMessage(sender, msg) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.innerHTML = `<span style="color: #ff8080;">[Privado de ${sender}]</span> ${msg}`;
+      chatContainer.appendChild(msgDiv);
       scrollToBottom();
     }
 
-    function highlightMentions(text) {
-      // Ex: se o usuário for "Maria" e o text contiver "@Maria",
-      // iremos envolver em <span class="highlight">@Maria</span>
-      // Também realça menções a outros usuários, mas sem cor específica
-      // A ideia principal é realçar *quando* a menção é do nosso username
-      // ou qualquer @menção (ajuste conforme necessário)
-
-      // Realçar qualquer menção @palavra
-      return text.replace(/(@[^\s]+)/g, (match) => {
-        // Se a menção for do próprio username, realça mais
-        if (match.toLowerCase() === '@' + username.toLowerCase()) {
-          return `<span class="highlight">${match}</span>`;
-        }
-        // Caso contrário, apenas retorna com um estilo normal (opcional)
-        return `<span style="text-decoration: underline;">${match}</span>`;
-      });
-    }
-
-    function scrollToBottom() {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
+    // Limpa o chat
     function clearChat() {
       chatContainer.innerHTML = '';
-      appendServerMessage('O chat foi limpo.');
+    }
+
+    // Mantém sempre no final do scroll
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
     }
   </script>
 </body>

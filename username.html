@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Starchat - Nome de Usuário</title>
-  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
       font-family: 'PressStart2P';
@@ -24,7 +24,7 @@
       padding: 10px;
       font-size: 16px;
       margin-bottom: 20px;
-      width: 200px;
+      width: 250px;
       background-color: #333;
       border: none;
       color: #fff;
@@ -42,17 +42,20 @@
     button:hover {
       background-color: #ccc;
     }
+    h1 {
+      margin-bottom: 30px;
+    }
   </style>
 </head>
 <body>
-  <h1>Insira seu Nome</h1>
-  <input type="text" id="username" placeholder="Nome de usuário" maxlength="16">
+  <h1>Insira seu Nome de Usuário</h1>
+  <input type="text" id="username" placeholder="Nome de usuário">
   <button onclick="proceed()">Entrar</button>
 
   <script>
     function proceed() {
       const username = document.getElementById('username').value.trim();
-      if (username) {
+      if(username) {
         sessionStorage.setItem('username', username);
         window.location.href = 'chat.html';
       } else {
