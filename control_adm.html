@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Starchat - Administração</title>
+  <title>Starchat - Painel ADM</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
@@ -13,260 +13,198 @@
       background-color: #000;
       color: #fff;
       font-family: 'PressStart2P', monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
       margin: 0;
-      height: 100vh;
-      overflow-y: auto;
-    }
-    h1 {
-      margin-bottom: 20px;
-      text-align: center;
-    }
-    #auth-section, #admin-section {
-      width: 100%;
-      max-width: 500px;
-      background-color: #111;
       padding: 20px;
-      border: 2px solid #fff;
-      margin-bottom: 20px;
-      border-radius: 5px;
     }
-    input, button, select {
-      padding: 10px;
-      font-size: 16px;
+    h1, h2 {
+      margin: 0 0 20px 0;
+    }
+    .admin-section {
+      border: 1px solid #fff;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    label, button {
+      display: inline-block;
       margin: 5px 0;
-      width: 100%;
-      box-sizing: border-box;
+    }
+    input {
+      padding: 5px;
+      margin-bottom: 5px;
       background-color: #333;
       border: none;
       color: #fff;
     }
     button {
+      background-color: #fff;
+      color: #000;
+      border: none;
+      padding: 5px 10px;
       cursor: pointer;
-      background-color: #555;
-      transition: background-color 0.3s;
     }
     button:hover {
-      background-color: #777;
+      background-color: #ccc;
     }
-    .action-button {
-      background-color: #ff5555;
+    .user-list {
+      list-style: none;
+      padding: 0;
     }
-    .action-button:hover {
-      background-color: #ff7777;
-    }
-    .success {
-      color: #0f0;
-    }
-    .error {
-      color: #f00;
-    }
-    .hidden {
-      display: none;
-    }
-    label {
-      margin-top: 10px;
-    }
-    /* Responsividade */
-    @media (max-width: 600px) {
-      #auth-section, #admin-section {
-        max-width: 100%;
-      }
+    .user-item {
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>Controle de Administração - Starchat</h1>
-
-  <div id="auth-section">
-    <h2>Autenticação</h2>
-    <input type="password" id="admin-password" placeholder="Senha do Administrador">
-    <button id="authenticate-button">Autenticar</button>
-    <p id="auth-message"></p>
+  <h1>Painel de Controle - Starchat</h1>
+  <div class="admin-section">
+    <h2>Adicionar Novo Admin</h2>
+    <input type="text" id="newAdminNick" placeholder="Nome do usuário (nick)">
+    <button onclick="addAdmin()">Adicionar Admin</button>
   </div>
 
-  <div id="admin-section" class="hidden">
-    <h2>Adicionar Administrador</h2>
-    <input type="text" id="new-admin-nick" placeholder="Nome de usuário">
-    <button id="add-admin-button">Adicionar Admin</button>
-    <p id="add-admin-message"></p>
-
-    <h2>Gerenciar Usuários</h2>
-    <label for="user-select">Selecionar Usuário:</label>
-    <select id="user-select">
-      <!-- Opções serão preenchidas dinamicamente -->
-    </select>
-
-    <button class="action-button" id="mute-user-button">Mutar</button>
-    <button class="action-button" id="unmute-user-button">Desmutar</button>
-    <button class="action-button" id="ban-user-button">Banir</button>
-    <button class="action-button" id="unban-user-button">Desbanir</button>
-
-    <p id="manage-user-message"></p>
+  <div class="admin-section">
+    <h2>Usuários Online</h2>
+    <ul id="onlineUsers" class="user-list"></ul>
   </div>
 
   <script>
+    // Conexão WebSocket com o mesmo host
+    // Necessário para enviar comandos "internos" para o servidor
     const ws = new WebSocket(`wss://${window.location.host}`);
 
+    // Quando conectar, não somos um "usuário normal", mas um "painel".
+    // Podemos mandar um "nome" diferente ou ignorar. Aqui, vamos conectar sem mandar username.
     ws.onopen = () => {
-      console.log('Conectado ao servidor WebSocket');
+      console.log('[ADM] Conexão estabelecida com o WebSocket.');
+      // Podemos mandar algo para não ficar "Anônimo" no chat. 
+      // Mas também podemos ignorar, pois o Painel não precisa "aparecer" no chat.
+      ws.send(JSON.stringify({ type: 'connect', username: 'PainelADM' }));
     };
 
+    // Recebe dados do servidor
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'system') {
-        if (data.message === 'Autenticado como administrador.') {
-          document.getElementById('auth-section').classList.add('hidden');
-          document.getElementById('admin-section').classList.remove('hidden');
-          displayManageUserMessage('Autenticado com sucesso!', 'success');
-          loadUsers();
-        } else if (data.message === 'Senha de administrador incorreta.') {
-          displayAuthMessage('Senha incorreta. Tente novamente.', 'error');
-        } else {
-          console.log('Sistema:', data.message);
-        }
-      } else if (data.type === 'user_list') {
-        populateUserSelect(data.users);
+
+      // Precisamos de uma forma de descobrir quem está online. 
+      // Uma opção simples: Mandar um comando +who (criar se quiser) e o servidor responde com a lista.
+      // Por enquanto, sem esse comando no server, podemos "simular" de outra forma,
+      // ou acessar via fetch GET (mas não implementamos rota).
+      // 
+      // Como exemplo didático, ignore "onlineUsers" e "user-item" se não houver +who. 
+      // Vamos supor que a cada mensagem "system" quando user entra ou sai, atualizamos a lista.
+      // -> Implementaremos um método "atualizaUsuariosOnline()" que envia +who para o servidor 
+      //    e, quando retornar, atualizamos a lista.
+      // 
+      // Se quisermos receber +who, precisamos criar esse comando no server:
+      //   - handleCommand(...): case '+who': retorna a lista de clients
+
+      if (data.type === 'users_list') {
+        // Vamos supor que data.users é um array de nicks
+        refreshUserList(data.users);
       }
     };
 
-    ws.onclose = () => {
-      console.log('Desconectado do servidor WebSocket');
-      displayManageUserMessage('Desconectado do servidor.', 'error');
-    };
-
-    // Adicionar event listeners aos botões
-    document.getElementById('authenticate-button').addEventListener('click', authenticate);
-    document.getElementById('add-admin-button').addEventListener('click', addAdmin);
-    document.getElementById('mute-user-button').addEventListener('click', muteUser);
-    document.getElementById('unmute-user-button').addEventListener('click', unmuteUser);
-    document.getElementById('ban-user-button').addEventListener('click', banUser);
-    document.getElementById('unban-user-button').addEventListener('click', unbanUser);
-
-    function authenticate() {
-      const password = document.getElementById('admin-password').value.trim();
-      if (!password) {
-        displayAuthMessage('Por favor, insira a senha.', 'error');
-        return;
-      }
-
-      const authData = {
-        type: 'admin_auth',
-        password: password
-      };
-      ws.send(JSON.stringify(authData));
-    }
-
-    function displayAuthMessage(message, type) {
-      const msgElem = document.getElementById('auth-message');
-      msgElem.textContent = message;
-      msgElem.className = type;
-    }
-
-    function displayManageUserMessage(message, type) {
-      const msgElem = document.getElementById('manage-user-message');
-      msgElem.textContent = message;
-      msgElem.className = type;
-      setTimeout(() => { msgElem.textContent = ''; msgElem.className = ''; }, 5000);
-    }
-
-    // Funções para mutar, desmutar, banir e desbanir usuários
-    function muteUser() {
-      const userSelect = document.getElementById('user-select');
-      const selectedUser = userSelect.value;
-      if (!selectedUser) {
-        displayManageUserMessage('Selecione um usuário.', 'error');
-        return;
-      }
-      const command = `+mute @${selectedUser}`;
-      sendAdminCommand(command);
-    }
-
-    function unmuteUser() {
-      const userSelect = document.getElementById('user-select');
-      const selectedUser = userSelect.value;
-      if (!selectedUser) {
-        displayManageUserMessage('Selecione um usuário.', 'error');
-        return;
-      }
-      const command = `+unmute @${selectedUser}`;
-      sendAdminCommand(command);
-    }
-
-    function banUser() {
-      const userSelect = document.getElementById('user-select');
-      const selectedUser = userSelect.value;
-      if (!selectedUser) {
-        displayManageUserMessage('Selecione um usuário.', 'error');
-        return;
-      }
-      const command = `+ban @${selectedUser}`;
-      sendAdminCommand(command);
-    }
-
-    function unbanUser() {
-      const userSelect = document.getElementById('user-select');
-      const selectedUser = userSelect.value;
-      if (!selectedUser) {
-        displayManageUserMessage('Selecione um usuário.', 'error');
-        return;
-      }
-      const command = `+unban @${selectedUser}`;
-      sendAdminCommand(command);
-    }
-
-    function addAdmin() {
-      const newAdminNick = document.getElementById('new-admin-nick').value.trim();
-      if (!newAdminNick) {
-        displayManageUserMessage('Insira o nome de usuário para adicionar como admin.', 'error');
-        return;
-      }
-      const addAdminData = {
-        type: 'add_admin',
-        new_admin: newAdminNick
-      };
-      ws.send(JSON.stringify(addAdminData));
-      displayManageUserMessage(`Solicitação para adicionar @${newAdminNick} como admin enviada.`, 'success');
-      document.getElementById('new-admin-nick').value = '';
-    }
-
-    function sendAdminCommand(command) {
-      // Envia o comando como se fosse uma mensagem de chat
-      const data = {
+    // Simulação de um comando +who
+    function requestUserList() {
+      // Precisamos que o servidor implemente esse comando. 
+      // Ex: +who
+      ws.send(JSON.stringify({
         type: 'message',
-        message: command
-      };
-      ws.send(JSON.stringify(data));
-      displayManageUserMessage(`Comando "${command}" enviado.`, 'success');
+        username: 'PainelADM',
+        message: '+who'
+      }));
     }
 
-    // Popula o select de usuários conectados
-    function populateUserSelect(users) {
-      const userSelect = document.getElementById('user-select');
-      userSelect.innerHTML = ''; // Limpa opções anteriores
-      users.forEach((user) => {
-        if (user.toLowerCase() !== 'anônimo') { // Evita adicionar 'Anônimo'
-          const option = document.createElement('option');
-          option.value = user;
-          option.textContent = user;
-          userSelect.appendChild(option);
-        }
+    function refreshUserList(users) {
+      const onlineUsers = document.getElementById('onlineUsers');
+      onlineUsers.innerHTML = '';
+      users.forEach(user => {
+        const li = document.createElement('li');
+        li.classList.add('user-item');
+        li.innerHTML = `
+          <span>${user}</span> 
+          <button onclick="banUser('${user}')">Ban</button>
+          <button onclick="unbanUser('${user}')">Unban</button>
+          <button onclick="muteUser('${user}')">Mute</button>
+          <button onclick="unmuteUser('${user}')">Unmute</button>
+        `;
+        onlineUsers.appendChild(li);
       });
     }
 
-    // Função para carregar usuários conectados
-    function loadUsers() {
-      // Envia o comando para listar usuários
-      const command = '+list_users';
-      const data = {
+    function banUser(nick) {
+      ws.send(JSON.stringify({
         type: 'message',
-        message: command
-      };
-      ws.send(JSON.stringify(data));
+        username: 'PainelADM',
+        message: `+ban ${nick}`
+      }));
     }
+
+    function unbanUser(nick) {
+      ws.send(JSON.stringify({
+        type: 'message',
+        username: 'PainelADM',
+        message: `+unban ${nick}`
+      }));
+    }
+
+    function muteUser(nick) {
+      ws.send(JSON.stringify({
+        type: 'message',
+        username: 'PainelADM',
+        message: `+mute ${nick}`
+      }));
+    }
+
+    function unmuteUser(nick) {
+      ws.send(JSON.stringify({
+        type: 'message',
+        username: 'PainelADM',
+        message: `+unmute ${nick}`
+      }));
+    }
+
+    function addAdmin() {
+      const newAdminNick = document.getElementById('newAdminNick').value.trim();
+      if (!newAdminNick) {
+        alert('Insira o nick do usuário para torná-lo admin.');
+        return;
+      }
+      // Para adicionar um admin, precisamos injetar esse nick no array "admins" do server.
+      // Não temos rota HTTP para isso. Então podemos fazer via fetch para uma rota /adm/add
+      // ou mandar um "comando" especial. Vamos criar uma rota Express simples no server?
+
+      fetch('/adm/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nick: newAdminNick, admin_pass: getParameterByName('admin_pass') })
+      })
+        .then(res => {
+          if (res.status === 200) {
+            alert(`Usuário ${newAdminNick} agora é Admin!`);
+          } else {
+            alert('Falha ao adicionar admin (verifique se a senha do painel está correta).');
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          alert('Erro ao adicionar admin.');
+        });
+    }
+
+    // Função para pegar query strings (?admin_pass=1234)
+    function getParameterByName(name) {
+      const url = window.location.href;
+      name = name.replace(/[\\[\]]/g, '\\$&');
+      const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+      const results = regex.exec(url);
+      if (!results) return null;
+      if (!results[2]) return '';
+      return decodeURIComponent(results[2].replace(/\+/g, ' '));
+    }
+
+    // Exemplo: pedir a lista de usuários quando entrar (se tivermos +who no server)
+    // requestUserList();
   </script>
 </body>
 </html>

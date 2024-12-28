@@ -2,73 +2,53 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const path = require('path');
-const bcrypt = require('bcrypt');
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
-const sanitizeHtml = require('sanitize-html');
 
-// Configurações de segurança
 const app = express();
-app.use(helmet());
-
-// Limitar requisições para endpoints sensíveis
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // Limite de 100 requisições por IP
-  message: 'Muitas tentativas de acesso. Tente novamente mais tarde.'
-});
-
-app.use('/control_adm.html', loginLimiter);
-
-// Serve todos os arquivos estáticos da pasta atual
-app.use(express.static(__dirname));
-
-// Cria o servidor HTTP
 const server = http.createServer(app);
-
-// Cria o WebSocket Server a partir do servidor HTTP
 const wss = new WebSocket.Server({ server });
 
-// Listas de conexões e administração
+// ===========================
+//     CONFIGURAÇÕES BÁSICAS
+// ===========================
+
+// Serve arquivos estáticos (HTML, CSS, JS, fontes, etc.)
+app.use(express.static(__dirname));
+
+// Lista de usuários conectados
 let clients = [];
-let admins = []; // Lista de usernames administradores (em lowercase)
-let bannedUsers = []; // Lista de usernames banidos (em lowercase)
-let mutedUsers = []; // Lista de usernames mutados (em lowercase)
 
-// Armazenamento de admins com senhas hashadas
-let adminCredentials = {}; // { username: hashedPassword }
+// Lista de admins (strings de nomes de usuário).
+// Pode ser populado dinamicamente pelo control_adm.html
+let admins = [];
 
-// Palavra(s) chave para autenticação de admin (Defina uma senha segura)
-const ADMIN_PASSWORD = '92-033-192';
-const bannedWords = ['racista', 'pedofilo', 'sexo', 'porra', 'puta', 'caralho', 'prr', 'fdp', 'foda', 'fds', 'vsfd', 'vagabundo', 'vagabun', 'vadia', 'vadi', 'pau', 'cu', 'bct', 'buceta']; // Palavras banidas
+// Lista de usuários banidos
+let bannedUsers = []; // armazena nicks banidos
 
-// === Funções de Utilidade ===
+// Palavras banidas (filtro simples)
+const bannedWords = ['racista', 'pedofilo', 'sexo'];
 
-// Inicializar credenciais do admin
-(async () => {
-  const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
-  adminCredentials['admin'] = hashedPassword; // Username padrão: 'admin'
-})();
+// ===========================
+//       FUNÇÕES DE APOIO
+// ===========================
 
-// Substitui palavras banidas por '***'
+// Aplica filtro de palavras banidas
 function filterBadWords(text) {
   let sanitizedText = text;
   bannedWords.forEach((word) => {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    const regex = new RegExp(word, 'gi');
     sanitizedText = sanitizedText.replace(regex, '***');
   });
   return sanitizedText;
 }
 
-// Formata *texto* como <i>texto</i> e **texto** como <b>texto</b>
+// Formatação *italico* e **negrito**
 function parseFormatting(text) {
-  let formatted = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-  formatted = formatted.replace(/\*(.*?)\*/g, '<i>$1</i>');
+  let formatted = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');   // **texto** -> <b>texto</b>
+  formatted = formatted.replace(/\*(.*?)\*/g, '<i>$1</i>');      // *texto*  -> <i>texto</i>
   return formatted;
 }
 
-// Detecta links (http/https) e transforma em <a> clicável
+// Transforma URLs em links clicáveis
 function parseLinks(text) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   return text.replace(urlRegex, (url) => {
@@ -76,10 +56,9 @@ function parseLinks(text) {
   });
 }
 
-// Destaca menções do tipo @usuario
+// Destaca menções @nome
 function parseMentions(text, clientList) {
   const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
-
   return text.replace(mentionRegex, (match, p1) => {
     const mentionedUser = clientList.find(
       (client) => client.username.toLowerCase() === p1.toLowerCase()
@@ -87,24 +66,20 @@ function parseMentions(text, clientList) {
     if (mentionedUser) {
       return `<span class="mention">@${mentionedUser.username}</span>`;
     }
-    return match;
+    return match; // se não achar, mantém
   });
 }
 
-// Sanitiza e formata a mensagem
+// Aplica todos os filtros e formatações
 function formatMessage(rawText, clientList) {
-  let sanitized = sanitizeHtml(rawText, {
-    allowedTags: [], // Remove todas as tags HTML
-    allowedAttributes: {}
-  });
-  sanitized = filterBadWords(sanitized);
+  let sanitized = filterBadWords(rawText);
   sanitized = parseFormatting(sanitized);
   sanitized = parseLinks(sanitized);
   sanitized = parseMentions(sanitized, clientList);
   return sanitized;
 }
 
-// Broadcast para todos
+// Envia mensagem para todos
 function broadcast(data) {
   clients.forEach((client) => {
     if (client.ws.readyState === WebSocket.OPEN) {
@@ -113,250 +88,92 @@ function broadcast(data) {
   });
 }
 
-// Envia mensagem apenas para um cliente específico
+// Envia mensagem para um cliente específico
 function sendToClient(targetClient, data) {
   if (targetClient.ws.readyState === WebSocket.OPEN) {
     targetClient.ws.send(JSON.stringify(data));
   }
 }
 
-// Verifica se um usuário é administrador
+// Verifica se um usuário é admin
 function isAdmin(username) {
-  return admins.includes(username.toLowerCase());
+  return admins.some((adm) => adm.toLowerCase() === username.toLowerCase());
 }
 
-// Envia a lista de usuários conectados para um administrador
-function sendUserList(client) {
-  const usernames = clients.map(c => c.username);
-  sendToClient(client, {
-    type: 'user_list',
-    users: usernames
-  });
+// Localiza cliente pelo nome
+function findClientByName(username) {
+  return clients.find(
+    (c) => c.username.toLowerCase() === username.toLowerCase()
+  );
 }
 
-// === Comandos ===
+// Fecha a conexão de um usuário
+function disconnectUser(client) {
+  try {
+    client.ws.close();
+  } catch (err) {
+    console.error('Erro ao desconectar usuário:', err);
+  }
+}
 
-async function handleCommand(client, command, args) {
+// ===========================
+//       COMANDOS
+// ===========================
+function handleCommand(client, command, args) {
+  // Verifica se é admin
+  const userIsAdmin = isAdmin(client.username);
+
   switch (command.toLowerCase()) {
     case '+help':
       const helpText = `
-        <b>Lista de Comandos Disponíveis:</b><br>
+        <b>Comandos Disponíveis:</b><br>
         <ul>
-          <li><b>+help</b>: Exibe esta lista de comandos</li>
-          <li><b>+nick nome</b>: Altera seu nome de usuário</li>
-          <li><b>+private_msg @usuario mensagem</b>: Envia mensagem privada para @usuario</li>
+          <li><b>+help</b>: Lista de comandos</li>
+          <li><b>+nick &lt;novoNome&gt;</b>: Altera seu nome de usuário</li>
+          <li><b>+private_msg @usuario mensagem</b>: Envia mensagem privada</li>
           <li><b>+clear_msg</b>: Limpa o histórico do chat (para todos)</li>
-          <li><b>+mute @usuario</b>: Muta um usuário (Admin)</li>
-          <li><b>+unmute @usuario</b>: Desmuta um usuário (Admin)</li>
-          <li><b>+ban @usuario</b>: Bane um usuário (Admin)</li>
-          <li><b>+unban @usuario</b>: Desbane um usuário (Admin)</li>
           <li><b>*texto*</b>: Formata <i>texto</i></li>
           <li><b>**texto**</b>: Formata <b>texto</b></li>
           <li>Links (http:// ou https://) são clicáveis</li>
           <li>Menções @usuario destacam o usuário</li>
+          ${
+            userIsAdmin
+              ? `
+              <li><b>+ban &lt;usuario&gt;</b> / <b>+unban &lt;usuario&gt;</b></li>
+              <li><b>+mute &lt;usuario&gt;</b> / <b>+unmute &lt;usuario&gt;</b></li>
+              `
+              : ''
+          }
         </ul>
       `;
-      sendToClient(client, {
-        type: 'system',
-        message: helpText
-      });
+      sendToClient(client, { type: 'system', message: helpText });
       break;
 
     case '+nick':
       if (!args[0]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Uso: +nick <novoNome>'
-        });
-        return;
-      }
-      const desiredNick = sanitizeHtml(args[0].trim());
-      const desiredNickLower = desiredNick.toLowerCase();
-      if (desiredNick === '') {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Nome de usuário inválido.'
-        });
-        return;
-      }
-      // Verifica se o nome já está em uso
-      const existingUser = clients.find(c => c.username.toLowerCase() === desiredNickLower);
-      if (existingUser && existingUser !== client) {
-        sendToClient(client, {
-          type: 'system',
-          message: `O nome de usuário "${desiredNick}" já está em uso. Por favor, escolha outro.`
-        });
+        sendToClient(client, { type: 'system', message: 'Uso: +nick <novoNome>' });
         return;
       }
       const oldName = client.username;
-      client.username = desiredNick;
-      broadcast({
-        type: 'system',
-        message: `<b>${oldName}</b> mudou seu nome para <b>${client.username}</b>.`
-      });
-      break;
+      const newName = filterBadWords(args[0]).trim();
+      if (!newName || newName === '***') {
+        sendToClient(client, { type: 'system', message: 'Nome inválido.' });
+        return;
+      }
+      // Se o user era admin e mudou de nome, precisamos verificar se sai da admin list
+      // (depende da sua lógica; aqui, o user "perde" o admin se mudar de nome, a menos que readicione)
+      if (isAdmin(oldName)) {
+        admins = admins.filter((adm) => adm.toLowerCase() !== oldName.toLowerCase());
+      }
 
-    case '+mute':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
-        return;
-      }
-      if (!args[0]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Uso: +mute @usuario'
-        });
-        return;
-      }
-      if (!args[0].startsWith('@')) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você precisa mencionar alguém. Ex: @fulano'
-        });
-        return;
-      }
-      const muteUsername = args[0].substring(1).toLowerCase();
-      if (mutedUsers.includes(muteUsername)) {
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${muteUsername} já está mutado.`
-        });
-        return;
-      }
-      mutedUsers.push(muteUsername);
+      client.username = newName;
       broadcast({
         type: 'system',
-        message: `<b>${client.username}</b> mutou <b>@${muteUsername}</b>.`
-      });
-      break;
-
-    case '+unmute':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
-        return;
-      }
-      if (!args[0]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Uso: +unmute @usuario'
-        });
-        return;
-      }
-      if (!args[0].startsWith('@')) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você precisa mencionar alguém. Ex: @fulano'
-        });
-        return;
-      }
-      const unmuteUsername = args[0].substring(1).toLowerCase();
-      if (!mutedUsers.includes(unmuteUsername)) {
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${unmuteUsername} não está mutado.`
-        });
-        return;
-      }
-      mutedUsers = mutedUsers.filter((u) => u !== unmuteUsername);
-      broadcast({
-        type: 'system',
-        message: `<b>${client.username}</b> desmuta <b>@${unmuteUsername}</b>.`
-      });
-      break;
-
-    case '+ban':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
-        return;
-      }
-      if (!args[0]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Uso: +ban @usuario'
-        });
-        return;
-      }
-      if (!args[0].startsWith('@')) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você precisa mencionar alguém. Ex: @fulano'
-        });
-        return;
-      }
-      const banUsername = args[0].substring(1).toLowerCase();
-      if (bannedUsers.includes(banUsername)) {
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${banUsername} já está banido.`
-        });
-        return;
-      }
-      bannedUsers.push(banUsername);
-      // Encontra o cliente banido e o desconecta
-      const targetBanClient = clients.find(
-        (c) => c.username.toLowerCase() === banUsername
-      );
-      if (targetBanClient) {
-        sendToClient(targetBanClient, {
-          type: 'system',
-          message: 'Você foi banido do chat.'
-        });
-        targetBanClient.ws.close();
-      }
-      broadcast({
-        type: 'system',
-        message: `<b>${client.username}</b> baniu <b>@${banUsername}</b>.`
-      });
-      break;
-
-    case '+unban':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
-        return;
-      }
-      if (!args[0]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Uso: +unban @usuario'
-        });
-        return;
-      }
-      if (!args[0].startsWith('@')) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você precisa mencionar alguém. Ex: @fulano'
-        });
-        return;
-      }
-      const unbanUsername = args[0].substring(1).toLowerCase();
-      if (!bannedUsers.includes(unbanUsername)) {
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${unbanUsername} não está banido.`
-        });
-        return;
-      }
-      bannedUsers = bannedUsers.filter((u) => u !== unbanUsername);
-      broadcast({
-        type: 'system',
-        message: `<b>${client.username}</b> desbaniu <b>@${unbanUsername}</b>.`
+        message: `<b>${oldName}</b> agora é <b>${newName}</b>.`
       });
       break;
 
     case '+private_msg':
-      // Esperamos algo como: +private_msg @fulano Mensagem
       if (!args[0] || !args[1]) {
         sendToClient(client, {
           type: 'system',
@@ -365,67 +182,136 @@ async function handleCommand(client, command, args) {
         return;
       }
       if (!args[0].startsWith('@')) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você precisa mencionar alguém. Ex: @fulano'
-        });
+        sendToClient(client, { type: 'system', message: 'Mencione alguém. Ex: @fulano' });
         return;
       }
-      const targetUsernamePM = args[0].substring(1).toLowerCase();
-      const targetClientPM = clients.find(
-        (c) => c.username.toLowerCase() === targetUsernamePM
-      );
-      if (!targetClientPM) {
+      const targetUsername = args[0].substring(1);
+      const targetClient = findClientByName(targetUsername);
+      if (!targetClient) {
         sendToClient(client, {
           type: 'system',
           message: `Usuário ${args[0]} não encontrado.`
         });
         return;
       }
-      const privateMessage = args.slice(1).join(' ');
-      const formattedPM = formatMessage(privateMessage, clients);
-      // Envia para o remetente
+      if (targetClient.isBanned) {
+        sendToClient(client, {
+          type: 'system',
+          message: `Este usuário está banido.`
+        });
+        return;
+      }
+      const privateMsg = args.slice(1).join(' ');
+      const formattedPM = formatMessage(privateMsg, clients);
+      // Envia ao remetente
       sendToClient(client, {
         type: 'private',
         from: client.username,
-        to: targetClientPM.username,
-        message: `(Para @${targetClientPM.username}) ${formattedPM}`
+        to: targetClient.username,
+        message: `(Para @${targetClient.username}) ${formattedPM}`
       });
-      // Envia para o destinatário
-      sendToClient(targetClientPM, {
+      // Envia ao destinatário
+      sendToClient(targetClient, {
         type: 'private',
         from: client.username,
-        to: targetClientPM.username,
+        to: targetClient.username,
         message: `(De @${client.username}) ${formattedPM}`
       });
       break;
 
     case '+clear_msg':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
-        return;
-      }
-      broadcast({
-        type: 'clear'
-      });
+      broadcast({ type: 'clear' });
       broadcast({
         type: 'system',
         message: `<b>${client.username}</b> limpou o chat.`
       });
       break;
 
-    case '+list_users':
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar este comando.'
-        });
+    // ======= COMANDOS DE ADMIN =======
+    case '+ban':
+      if (!userIsAdmin) {
+        sendToClient(client, { type: 'system', message: 'Acesso negado.' });
         return;
       }
-      sendUserList(client);
+      if (!args[0]) {
+        sendToClient(client, { type: 'system', message: 'Uso: +ban <usuario>' });
+        return;
+      }
+      {
+        const banName = args[0];
+        if (bannedUsers.includes(banName.toLowerCase())) {
+          sendToClient(client, { type: 'system', message: 'Usuário já está banido.' });
+          return;
+        }
+        bannedUsers.push(banName.toLowerCase());
+        broadcast({ type: 'system', message: `<b>${banName}</b> foi banido do chat.` });
+        // Tenta desconectar se estiver online
+        const banClient = findClientByName(banName);
+        if (banClient) {
+          banClient.isBanned = true;
+          disconnectUser(banClient);
+        }
+      }
+      break;
+
+    case '+unban':
+      if (!userIsAdmin) {
+        sendToClient(client, { type: 'system', message: 'Acesso negado.' });
+        return;
+      }
+      if (!args[0]) {
+        sendToClient(client, { type: 'system', message: 'Uso: +unban <usuario>' });
+        return;
+      }
+      {
+        const unbanName = args[0].toLowerCase();
+        bannedUsers = bannedUsers.filter((u) => u !== unbanName);
+        broadcast({ type: 'system', message: `<b>${args[0]}</b> foi desbanido do chat.` });
+      }
+      break;
+
+    case '+mute':
+      if (!userIsAdmin) {
+        sendToClient(client, { type: 'system', message: 'Acesso negado.' });
+        return;
+      }
+      if (!args[0]) {
+        sendToClient(client, { type: 'system', message: 'Uso: +mute <usuario>' });
+        return;
+      }
+      {
+        const muteClient = findClientByName(args[0]);
+        if (!muteClient) {
+          sendToClient(client, { type: 'system', message: 'Usuário não encontrado.' });
+          return;
+        }
+        if (muteClient.isMuted) {
+          sendToClient(client, { type: 'system', message: 'Usuário já está mutado.' });
+          return;
+        }
+        muteClient.isMuted = true;
+        broadcast({ type: 'system', message: `<b>${muteClient.username}</b> foi mutado.` });
+      }
+      break;
+
+    case '+unmute':
+      if (!userIsAdmin) {
+        sendToClient(client, { type: 'system', message: 'Acesso negado.' });
+        return;
+      }
+      if (!args[0]) {
+        sendToClient(client, { type: 'system', message: 'Uso: +unmute <usuario>' });
+        return;
+      }
+      {
+        const unmuteClient = findClientByName(args[0]);
+        if (!unmuteClient) {
+          sendToClient(client, { type: 'system', message: 'Usuário não encontrado.' });
+          return;
+        }
+        unmuteClient.isMuted = false;
+        broadcast({ type: 'system', message: `<b>${unmuteClient.username}</b> foi desmutado.` });
+      }
       break;
 
     default:
@@ -437,134 +323,71 @@ async function handleCommand(client, command, args) {
   }
 }
 
-// === Evento de Conexão WebSocket ===
-
+// ===========================
+//     EVENTOS WEBSOCKET
+// ===========================
 wss.on('connection', (ws) => {
-  // Cria um objeto cliente para armazenar dados
+  // Cria objeto para o usuário
   const client = {
     ws,
-    username: 'Anônimo'
+    username: 'Anônimo',
+    isBanned: false,
+    isMuted: false
   };
 
-  // Adiciona o cliente à lista
   clients.push(client);
 
-  ws.on('message', async (message) => {
+  ws.on('message', (msg) => {
     let data;
     try {
-      data = JSON.parse(message);
-    } catch (error) {
-      console.error('Erro ao fazer parse da mensagem:', error);
+      data = JSON.parse(msg);
+    } catch (err) {
+      console.error('Erro ao parse da mensagem:', err);
       return;
     }
 
-    // data: { type: 'connect' | 'admin_auth' | 'message' | 'add_admin', ... }
     if (data.type === 'connect') {
-      // Quando o usuário entra com seu username
-      const desiredUsername = sanitizeHtml(data.username.trim());
-      const desiredUsernameLower = desiredUsername.toLowerCase();
-
-      // Verifica se o usuário está banido
-      if (bannedUsers.includes(desiredUsernameLower)) {
-        sendToClient(client, {
+      // Quando usuário conecta, definimos nome e avatar (se houver)
+      let sanitizedUsername = filterBadWords(data.username || 'Anônimo');
+      // Verifica se está banido
+      if (bannedUsers.includes(sanitizedUsername.toLowerCase())) {
+        // desconecta imediatamente
+        ws.send(JSON.stringify({
           type: 'system',
           message: 'Você está banido do chat.'
-        });
+        }));
         ws.close();
         return;
       }
 
-      // Verifica se o nome já está em uso
-      const existingUser = clients.find(c => c.username.toLowerCase() === desiredUsernameLower);
-      if (existingUser && existingUser !== client) {
-        sendToClient(client, {
+      client.username = sanitizedUsername;
+      // Se ele mudar o nome para algo que está banido no meio do caminho...
+      if (bannedUsers.includes(client.username.toLowerCase())) {
+        ws.send(JSON.stringify({
           type: 'system',
-          message: `O nome de usuário "${desiredUsername}" já está em uso. Por favor, escolha outro.`
-        });
+          message: 'Você está banido do chat.'
+        }));
         ws.close();
         return;
       }
 
-      client.username = desiredUsername;
       broadcast({
         type: 'system',
         message: `<b>${client.username}</b> entrou no chat.`
       });
-    } else if (data.type === 'admin_auth') {
-      // Autenticação de administrador
-      const username = client.username.toLowerCase();
-      const password = data.password;
-      if (!adminCredentials[username]) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Usuário não é um administrador.'
-        });
-        return;
-      }
-      const match = await bcrypt.compare(password, adminCredentials[username]);
-      if (match) {
-        if (!admins.includes(username)) {
-          admins.push(username);
-        }
-        sendToClient(client, {
-          type: 'system',
-          message: 'Autenticado como administrador.'
-        });
-        broadcast({
-          type: 'system',
-          message: `<b>${client.username}</b> foi autenticado como administrador.`
-        });
-        sendUserList(client);
-      } else {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Senha de administrador incorreta.'
-        });
-      }
-    } else if (data.type === 'add_admin') {
-      // Adiciona um administrador (Somente admin pode adicionar)
-      if (!isAdmin(client.username)) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Você não tem permissão para executar esta ação.'
-        });
-        return;
-      }
-      const newAdmin = sanitizeHtml(data.new_admin.trim()).toLowerCase();
-      if (!newAdmin) {
-        sendToClient(client, {
-          type: 'system',
-          message: 'Nome de usuário inválido para adicionar como administrador.'
-        });
-        return;
-      }
-      if (admins.includes(newAdmin)) {
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${newAdmin} já é um administrador.`
-        });
-        return;
-      }
-      if (!adminCredentials[newAdmin]) {
-        // Se o usuário ainda não é admin, precisa definir uma senha
-        // Neste exemplo, não estamos permitindo definir uma senha via chat
-        sendToClient(client, {
-          type: 'system',
-          message: `Usuário @${newAdmin} não possui credenciais de administrador. Defina uma senha no backend.`
-        });
-        return;
-      }
-      admins.push(newAdmin);
-      broadcast({
-        type: 'system',
-        message: `<b>${client.username}</b> adicionou <b>@${newAdmin}</b> como administrador.`
-      });
     } else if (data.type === 'message') {
-      const rawText = data.message || '';
-      const trimmedText = rawText.trim();
+      // Se o usuário está banido ou se baniu depois de conectado
+      if (bannedUsers.includes(client.username.toLowerCase())) {
+        ws.send(JSON.stringify({
+          type: 'system',
+          message: 'Você está banido do chat.'
+        }));
+        ws.close();
+        return;
+      }
 
-      // Verifica se o usuário está mutado
-      if (mutedUsers.includes(client.username.toLowerCase())) {
+      // Se o usuário está mutado, ignora a mensagem
+      if (client.isMuted) {
         sendToClient(client, {
           type: 'system',
           message: 'Você está mutado e não pode enviar mensagens.'
@@ -572,14 +395,17 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      // Verifica se é um comando (inicia com +)
+      const rawText = data.message || '';
+      const trimmedText = rawText.trim();
+
+      // Verifica se é comando
       if (trimmedText.startsWith('+')) {
         const parts = trimmedText.split(' ');
-        const command = parts[0]; // ex: +help
-        const args = parts.slice(1); // resto
+        const command = parts[0];
+        const args = parts.slice(1);
         handleCommand(client, command, args);
       } else {
-        // Mensagem normal
+        // Mensagem comum
         const formatted = formatMessage(trimmedText, clients);
         broadcast({
           type: 'message',
@@ -591,16 +417,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    // Remove o cliente da lista
     clients = clients.filter((c) => c !== client);
-
-    // Se for admin, remove da lista de admins
-    const usernameLower = client.username.toLowerCase();
-    const indexAdmin = admins.indexOf(usernameLower);
-    if (indexAdmin !== -1) {
-      admins.splice(indexAdmin, 1);
-    }
-
     broadcast({
       type: 'system',
       message: `<b>${client.username}</b> saiu do chat.`
@@ -608,7 +425,28 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Inicia o servidor
+// ===========================
+//   ROTA PARA O CONTROL_ADM
+// ===========================
+
+// A ideia é proteger essa rota com uma senha simples na query string
+// Exemplo: https://seusite.com/control_adm.html?admin_pass=SUA_SENHA
+const ADMIN_PASS = '92-033-192'; // Troque para uma senha segura!
+
+app.get('/control_adm.html', (req, res, next) => {
+  const pass = req.query.admin_pass;
+  // Verifica se a senha é válida
+  if (pass !== ADMIN_PASS) {
+    // Se não for, retorna 403 (Forbidden)
+    return res.status(403).send('<h1>Acesso Negado</h1>');
+  }
+  // Se for válida, serve o arquivo
+  res.sendFile(__dirname + '/control_adm.html');
+});
+
+// ===========================
+//   INICIANDO O SERVIDOR
+// ===========================
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);

@@ -70,37 +70,19 @@
     i {
       font-style: italic;
     }
-    #muted-banner {
-      background-color: #ff5555;
-      color: #fff;
-      text-align: center;
-      padding: 10px;
-      display: none;
-    }
-    /* Feedback de erro */
-    #error-message {
-      color: #f00;
-      text-align: center;
-      margin-top: 5px;
-    }
   </style>
 </head>
 <body>
-  <div id="muted-banner">Você está mutado e não pode enviar mensagens.</div>
   <div id="chat-container"></div>
 
-  <form id="message-form">
+  <form id="message-form" onsubmit="sendMessage(event)">
     <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
   </form>
-  <div id="error-message"></div>
 
   <script>
     const username = sessionStorage.getItem('username') || 'Anônimo';
     const chatContainer = document.getElementById('chat-container');
-    const mutedBanner = document.getElementById('muted-banner');
-    const errorMessage = document.getElementById('error-message');
-    let isMuted = false;
 
     // Conexão WebSocket (ajuste a URL se estiver rodando em outro host)
     const ws = new WebSocket(`wss://${window.location.host}`);
@@ -122,21 +104,6 @@
       switch(data.type) {
         case 'system':
           addSystemMessage(data.message);
-          // Verifica se o usuário foi mutado
-          if (data.message.includes('mutou') && data.message.includes(`@${username}`)) {
-            isMuted = true;
-            toggleMuteUI(true);
-          }
-          // Verifica se o usuário foi desmutado
-          if (data.message.includes('desmuta') && data.message.includes(`@${username}`)) {
-            isMuted = false;
-            toggleMuteUI(false);
-          }
-          // Verifica se o usuário foi banido
-          if (data.message.includes('banido') && data.message.includes(`@${username}`)) {
-            alert('Você foi banido do chat.');
-            ws.close();
-          }
           break;
         case 'message':
           addChatMessage(data.username, data.message);
@@ -146,9 +113,6 @@
           break;
         case 'clear':
           clearChat();
-          break;
-        case 'user_list':
-          populateUserSelect(data.users);
           break;
         default:
           console.log('Tipo de mensagem não reconhecido:', data.type);
@@ -160,24 +124,16 @@
       addSystemMessage('Você foi desconectado do servidor.');
     };
 
-    // Adicionar event listener para o formulário
-    document.getElementById('message-form').addEventListener('submit', sendMessage);
-
     // Envia mensagens
     function sendMessage(event) {
       event.preventDefault();
-      clearError();
-
-      if (isMuted) {
-        displayError('Você está mutado e não pode enviar mensagens.');
-        return;
-      }
       const messageInput = document.getElementById('message-input');
       const message = messageInput.value.trim();
       if(!message) return;
 
       const data = {
         type: 'message',
+        username: username,
         message: message
       };
       ws.send(JSON.stringify(data));
@@ -200,21 +156,6 @@
       msgDiv.innerHTML = `<span style="color: #0f0;">[Sistema]</span> ${msg}`;
       chatContainer.appendChild(msgDiv);
       scrollToBottom();
-
-      // Verifica se o sistema notifica sobre mute/desmute
-      if (msg.includes('mutou') && msg.includes(`@${username}`)) {
-        isMuted = true;
-        toggleMuteUI(true);
-      }
-      if (msg.includes('desmuta') && msg.includes(`@${username}`)) {
-        isMuted = false;
-        toggleMuteUI(false);
-      }
-      // Verifica se o usuário foi banido
-      if (msg.includes('banido') && msg.includes(`@${username}`)) {
-        alert('Você foi banido do chat.');
-        ws.close();
-      }
     }
 
     // Adiciona mensagem privada
@@ -235,36 +176,6 @@
     function scrollToBottom() {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
-
-    // Função para exibir ou esconder o banner de mute
-    function toggleMuteUI(muted) {
-      if (muted) {
-        mutedBanner.style.display = 'block';
-      } else {
-        mutedBanner.style.display = 'none';
-      }
-    }
-
-    // Funções para mostrar e limpar erros
-    function displayError(message) {
-      errorMessage.textContent = message;
-    }
-
-    function clearError() {
-      errorMessage.textContent = '';
-    }
-
-    // Adiciona um atalho para abrir a página de administração
-    // Pressione "Ctrl + A" para abrir a página de administração
-    document.addEventListener('keydown', function(event) {
-      if (event.ctrlKey && event.key.toLowerCase() === 'a') {
-        window.location.href = 'control_adm.html';
-      }
-    });
-
-    // Função opcional para exibir feedback visual para comandos específicos
-    // Pode ser expandida conforme necessário
-    // Por exemplo, desabilitar o envio de mensagens quando mutado
   </script>
 </body>
 </html>
