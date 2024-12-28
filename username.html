@@ -56,10 +56,12 @@
 <body>
   <h1>Insira seu Nome de Usuário</h1>
   <input type="text" id="username" placeholder="Nome de usuário">
-  <button onclick="proceed()">Entrar</button>
+  <button id="enter-button">Entrar</button>
   <div id="error-message"></div>
 
   <script>
+    document.getElementById('enter-button').addEventListener('click', proceed);
+
     function proceed() {
       const usernameInput = document.getElementById('username');
       const username = usernameInput.value.trim();

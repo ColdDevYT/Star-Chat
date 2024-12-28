@@ -84,14 +84,14 @@
   <div id="auth-section">
     <h2>Autenticação</h2>
     <input type="password" id="admin-password" placeholder="Senha do Administrador">
-    <button onclick="authenticate()">Autenticar</button>
+    <button id="authenticate-button">Autenticar</button>
     <p id="auth-message"></p>
   </div>
 
   <div id="admin-section" class="hidden">
     <h2>Adicionar Administrador</h2>
     <input type="text" id="new-admin-nick" placeholder="Nome de usuário">
-    <button onclick="addAdmin()">Adicionar Admin</button>
+    <button id="add-admin-button">Adicionar Admin</button>
     <p id="add-admin-message"></p>
 
     <h2>Gerenciar Usuários</h2>
@@ -100,10 +100,10 @@
       <!-- Opções serão preenchidas dinamicamente -->
     </select>
 
-    <button class="action-button" onclick="muteUser()">Mutar</button>
-    <button class="action-button" onclick="unmuteUser()">Desmutar</button>
-    <button class="action-button" onclick="banUser()">Banir</button>
-    <button class="action-button" onclick="unbanUser()">Desbanir</button>
+    <button class="action-button" id="mute-user-button">Mutar</button>
+    <button class="action-button" id="unmute-user-button">Desmutar</button>
+    <button class="action-button" id="ban-user-button">Banir</button>
+    <button class="action-button" id="unban-user-button">Desbanir</button>
 
     <p id="manage-user-message"></p>
   </div>
@@ -137,6 +137,14 @@
       console.log('Desconectado do servidor WebSocket');
       displayManageUserMessage('Desconectado do servidor.', 'error');
     };
+
+    // Adicionar event listeners aos botões
+    document.getElementById('authenticate-button').addEventListener('click', authenticate);
+    document.getElementById('add-admin-button').addEventListener('click', addAdmin);
+    document.getElementById('mute-user-button').addEventListener('click', muteUser);
+    document.getElementById('unmute-user-button').addEventListener('click', unmuteUser);
+    document.getElementById('ban-user-button').addEventListener('click', banUser);
+    document.getElementById('unban-user-button').addEventListener('click', unbanUser);
 
     function authenticate() {
       const password = document.getElementById('admin-password').value.trim();

@@ -40,8 +40,7 @@ let mutedUsers = []; // Lista de usernames mutados (em lowercase)
 let adminCredentials = {}; // { username: hashedPassword }
 
 // Palavra(s) chave para autenticação de admin (Defina uma senha segura)
-const ADMIN_PASSWORD = '92-033-192'; 
-
+const ADMIN_PASSWORD = '92-033-192';
 const bannedWords = ['racista', 'pedofilo', 'sexo', 'porra', 'puta', 'caralho', 'prr', 'fdp', 'foda', 'fds', 'vsfd', 'vagabundo', 'vagabun', 'vadia', 'vadi', 'pau', 'cu', 'bct', 'buceta']; // Palavras banidas
 
 // === Funções de Utilidade ===
@@ -171,7 +170,8 @@ async function handleCommand(client, command, args) {
         });
         return;
       }
-      const desiredNick = sanitizeHtml(args[0].trim()).toLowerCase();
+      const desiredNick = sanitizeHtml(args[0].trim());
+      const desiredNickLower = desiredNick.toLowerCase();
       if (desiredNick === '') {
         sendToClient(client, {
           type: 'system',
@@ -180,16 +180,16 @@ async function handleCommand(client, command, args) {
         return;
       }
       // Verifica se o nome já está em uso
-      const existingUser = clients.find(c => c.username.toLowerCase() === desiredNick);
-      if (existingUser) {
+      const existingUser = clients.find(c => c.username.toLowerCase() === desiredNickLower);
+      if (existingUser && existingUser !== client) {
         sendToClient(client, {
           type: 'system',
-          message: `O nome de usuário "${args[0]}" já está em uso. Por favor, escolha outro.`
+          message: `O nome de usuário "${desiredNick}" já está em uso. Por favor, escolha outro.`
         });
         return;
       }
       const oldName = client.username;
-      client.username = sanitizeHtml(args[0].trim());
+      client.username = desiredNick;
       broadcast({
         type: 'system',
         message: `<b>${oldName}</b> mudou seu nome para <b>${client.username}</b>.`
@@ -417,6 +417,17 @@ async function handleCommand(client, command, args) {
       });
       break;
 
+    case '+list_users':
+      if (!isAdmin(client.username)) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Você não tem permissão para executar este comando.'
+        });
+        return;
+      }
+      sendUserList(client);
+      break;
+
     default:
       sendToClient(client, {
         type: 'system',
@@ -450,10 +461,11 @@ wss.on('connection', (ws) => {
     // data: { type: 'connect' | 'admin_auth' | 'message' | 'add_admin', ... }
     if (data.type === 'connect') {
       // Quando o usuário entra com seu username
-      const desiredUsername = sanitizeHtml(data.username.trim()).toLowerCase();
+      const desiredUsername = sanitizeHtml(data.username.trim());
+      const desiredUsernameLower = desiredUsername.toLowerCase();
 
       // Verifica se o usuário está banido
-      if (bannedUsers.includes(desiredUsername)) {
+      if (bannedUsers.includes(desiredUsernameLower)) {
         sendToClient(client, {
           type: 'system',
           message: 'Você está banido do chat.'
@@ -463,17 +475,17 @@ wss.on('connection', (ws) => {
       }
 
       // Verifica se o nome já está em uso
-      const existingUser = clients.find(c => c.username.toLowerCase() === desiredUsername);
+      const existingUser = clients.find(c => c.username.toLowerCase() === desiredUsernameLower);
       if (existingUser && existingUser !== client) {
         sendToClient(client, {
           type: 'system',
-          message: `O nome de usuário "${data.username}" já está em uso. Por favor, escolha outro.`
+          message: `O nome de usuário "${desiredUsername}" já está em uso. Por favor, escolha outro.`
         });
         ws.close();
         return;
       }
 
-      client.username = sanitizeHtml(data.username.trim());
+      client.username = desiredUsername;
       broadcast({
         type: 'system',
         message: `<b>${client.username}</b> entrou no chat.`

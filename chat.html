@@ -89,7 +89,7 @@
   <div id="muted-banner">Você está mutado e não pode enviar mensagens.</div>
   <div id="chat-container"></div>
 
-  <form id="message-form" onsubmit="sendMessage(event)">
+  <form id="message-form">
     <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
   </form>
@@ -159,6 +159,9 @@
       console.log('Desconectado do servidor WebSocket');
       addSystemMessage('Você foi desconectado do servidor.');
     };
+
+    // Adicionar event listener para o formulário
+    document.getElementById('message-form').addEventListener('submit', sendMessage);
 
     // Envia mensagens
     function sendMessage(event) {
