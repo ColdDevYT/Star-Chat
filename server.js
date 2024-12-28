@@ -3,9 +3,23 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const sanitizeHtml = require('sanitize-html');
 
-// Cria a instância do Express
+// Configurações de segurança
 const app = express();
+app.use(helmet());
+
+// Limitar requisições para endpoints sensíveis
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // Limite de 100 requisições por IP
+  message: 'Muitas tentativas de acesso. Tente novamente mais tarde.'
+});
+
+app.use('/control_adm.html', loginLimiter);
 
 // Serve todos os arquivos estáticos da pasta atual
 app.use(express.static(__dirname));
@@ -16,26 +30,33 @@ const server = http.createServer(app);
 // Cria o WebSocket Server a partir do servidor HTTP
 const wss = new WebSocket.Server({ server });
 
-// Lista de conexões
+// Listas de conexões e administração
 let clients = [];
+let admins = []; // Lista de usernames administradores (em lowercase)
+let bannedUsers = []; // Lista de usernames banidos (em lowercase)
+let mutedUsers = []; // Lista de usernames mutados (em lowercase)
 
-// Listas de administração e penalidades
-let admins = []; // Lista de usernames administradores
-let bannedUsers = []; // Lista de usernames banidos
-let mutedUsers = []; // Lista de usernames mutados
+// Armazenamento de admins com senhas hashadas
+let adminCredentials = {}; // { username: hashedPassword }
 
 // Palavra(s) chave para autenticação de admin (Defina uma senha segura)
 const ADMIN_PASSWORD = '92-033-192'; 
 
-const bannedWords = ['racista', 'pedofilo', 'sexo', 'porra', 'puta', 'caralho', 'prr', 'fdp', 'foda', 'fds', 'vsfd', 'vagabundo', 'vagabun', 'vadia', 'vadi', 'pau', 'cu', 'bct', 'buceta' ]; // Palavras banidas
+const bannedWords = ['racista', 'pedofilo', 'sexo', 'porra', 'puta', 'caralho', 'prr', 'fdp', 'foda', 'fds', 'vsfd', 'vagabundo', 'vagabun', 'vadia', 'vadi', 'pau', 'cu', 'bct', 'buceta']; // Palavras banidas
 
 // === Funções de Utilidade ===
+
+// Inicializar credenciais do admin
+(async () => {
+  const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  adminCredentials['admin'] = hashedPassword; // Username padrão: 'admin'
+})();
 
 // Substitui palavras banidas por '***'
 function filterBadWords(text) {
   let sanitizedText = text;
   bannedWords.forEach((word) => {
-    const regex = new RegExp(word, 'gi');
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
     sanitizedText = sanitizedText.replace(regex, '***');
   });
   return sanitizedText;
@@ -71,9 +92,13 @@ function parseMentions(text, clientList) {
   });
 }
 
-// Monta HTML final do texto (filtro + parse)
+// Sanitiza e formata a mensagem
 function formatMessage(rawText, clientList) {
-  let sanitized = filterBadWords(rawText);
+  let sanitized = sanitizeHtml(rawText, {
+    allowedTags: [], // Remove todas as tags HTML
+    allowedAttributes: {}
+  });
+  sanitized = filterBadWords(sanitized);
   sanitized = parseFormatting(sanitized);
   sanitized = parseLinks(sanitized);
   sanitized = parseMentions(sanitized, clientList);
@@ -101,9 +126,18 @@ function isAdmin(username) {
   return admins.includes(username.toLowerCase());
 }
 
+// Envia a lista de usuários conectados para um administrador
+function sendUserList(client) {
+  const usernames = clients.map(c => c.username);
+  sendToClient(client, {
+    type: 'user_list',
+    users: usernames
+  });
+}
+
 // === Comandos ===
 
-function handleCommand(client, command, args) {
+async function handleCommand(client, command, args) {
   switch (command.toLowerCase()) {
     case '+help':
       const helpText = `
@@ -126,6 +160,39 @@ function handleCommand(client, command, args) {
       sendToClient(client, {
         type: 'system',
         message: helpText
+      });
+      break;
+
+    case '+nick':
+      if (!args[0]) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Uso: +nick <novoNome>'
+        });
+        return;
+      }
+      const desiredNick = sanitizeHtml(args[0].trim()).toLowerCase();
+      if (desiredNick === '') {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Nome de usuário inválido.'
+        });
+        return;
+      }
+      // Verifica se o nome já está em uso
+      const existingUser = clients.find(c => c.username.toLowerCase() === desiredNick);
+      if (existingUser) {
+        sendToClient(client, {
+          type: 'system',
+          message: `O nome de usuário "${args[0]}" já está em uso. Por favor, escolha outro.`
+        });
+        return;
+      }
+      const oldName = client.username;
+      client.username = sanitizeHtml(args[0].trim());
+      broadcast({
+        type: 'system',
+        message: `<b>${oldName}</b> mudou seu nome para <b>${client.username}</b>.`
       });
       break;
 
@@ -288,6 +355,68 @@ function handleCommand(client, command, args) {
       });
       break;
 
+    case '+private_msg':
+      // Esperamos algo como: +private_msg @fulano Mensagem
+      if (!args[0] || !args[1]) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Uso: +private_msg @usuario Mensagem'
+        });
+        return;
+      }
+      if (!args[0].startsWith('@')) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Você precisa mencionar alguém. Ex: @fulano'
+        });
+        return;
+      }
+      const targetUsernamePM = args[0].substring(1).toLowerCase();
+      const targetClientPM = clients.find(
+        (c) => c.username.toLowerCase() === targetUsernamePM
+      );
+      if (!targetClientPM) {
+        sendToClient(client, {
+          type: 'system',
+          message: `Usuário ${args[0]} não encontrado.`
+        });
+        return;
+      }
+      const privateMessage = args.slice(1).join(' ');
+      const formattedPM = formatMessage(privateMessage, clients);
+      // Envia para o remetente
+      sendToClient(client, {
+        type: 'private',
+        from: client.username,
+        to: targetClientPM.username,
+        message: `(Para @${targetClientPM.username}) ${formattedPM}`
+      });
+      // Envia para o destinatário
+      sendToClient(targetClientPM, {
+        type: 'private',
+        from: client.username,
+        to: targetClientPM.username,
+        message: `(De @${client.username}) ${formattedPM}`
+      });
+      break;
+
+    case '+clear_msg':
+      if (!isAdmin(client.username)) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Você não tem permissão para executar este comando.'
+        });
+        return;
+      }
+      broadcast({
+        type: 'clear'
+      });
+      broadcast({
+        type: 'system',
+        message: `<b>${client.username}</b> limpou o chat.`
+      });
+      break;
+
     default:
       sendToClient(client, {
         type: 'system',
@@ -309,7 +438,7 @@ wss.on('connection', (ws) => {
   // Adiciona o cliente à lista
   clients.push(client);
 
-  ws.on('message', (message) => {
+  ws.on('message', async (message) => {
     let data;
     try {
       data = JSON.parse(message);
@@ -318,10 +447,10 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // data: { type: 'connect' | 'admin_auth' | 'message', ... }
+    // data: { type: 'connect' | 'admin_auth' | 'message' | 'add_admin', ... }
     if (data.type === 'connect') {
       // Quando o usuário entra com seu username
-      const desiredUsername = data.username.toLowerCase();
+      const desiredUsername = sanitizeHtml(data.username.trim()).toLowerCase();
 
       // Verifica se o usuário está banido
       if (bannedUsers.includes(desiredUsername)) {
@@ -333,16 +462,38 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      client.username = filterBadWords(data.username) || 'Anônimo';
+      // Verifica se o nome já está em uso
+      const existingUser = clients.find(c => c.username.toLowerCase() === desiredUsername);
+      if (existingUser && existingUser !== client) {
+        sendToClient(client, {
+          type: 'system',
+          message: `O nome de usuário "${data.username}" já está em uso. Por favor, escolha outro.`
+        });
+        ws.close();
+        return;
+      }
+
+      client.username = sanitizeHtml(data.username.trim());
       broadcast({
         type: 'system',
         message: `<b>${client.username}</b> entrou no chat.`
       });
     } else if (data.type === 'admin_auth') {
       // Autenticação de administrador
+      const username = client.username.toLowerCase();
       const password = data.password;
-      if (password === ADMIN_PASSWORD) {
-        admins.push(client.username.toLowerCase());
+      if (!adminCredentials[username]) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Usuário não é um administrador.'
+        });
+        return;
+      }
+      const match = await bcrypt.compare(password, adminCredentials[username]);
+      if (match) {
+        if (!admins.includes(username)) {
+          admins.push(username);
+        }
         sendToClient(client, {
           type: 'system',
           message: 'Autenticado como administrador.'
@@ -351,6 +502,7 @@ wss.on('connection', (ws) => {
           type: 'system',
           message: `<b>${client.username}</b> foi autenticado como administrador.`
         });
+        sendUserList(client);
       } else {
         sendToClient(client, {
           type: 'system',
@@ -366,11 +518,27 @@ wss.on('connection', (ws) => {
         });
         return;
       }
-      const newAdmin = data.new_admin.toLowerCase();
+      const newAdmin = sanitizeHtml(data.new_admin.trim()).toLowerCase();
+      if (!newAdmin) {
+        sendToClient(client, {
+          type: 'system',
+          message: 'Nome de usuário inválido para adicionar como administrador.'
+        });
+        return;
+      }
       if (admins.includes(newAdmin)) {
         sendToClient(client, {
           type: 'system',
           message: `Usuário @${newAdmin} já é um administrador.`
+        });
+        return;
+      }
+      if (!adminCredentials[newAdmin]) {
+        // Se o usuário ainda não é admin, precisa definir uma senha
+        // Neste exemplo, não estamos permitindo definir uma senha via chat
+        sendToClient(client, {
+          type: 'system',
+          message: `Usuário @${newAdmin} não possui credenciais de administrador. Defina uma senha no backend.`
         });
         return;
       }
@@ -415,7 +583,8 @@ wss.on('connection', (ws) => {
     clients = clients.filter((c) => c !== client);
 
     // Se for admin, remove da lista de admins
-    const indexAdmin = admins.indexOf(client.username.toLowerCase());
+    const usernameLower = client.username.toLowerCase();
+    const indexAdmin = admins.indexOf(usernameLower);
     if (indexAdmin !== -1) {
       admins.splice(indexAdmin, 1);
     }

@@ -18,9 +18,12 @@
       align-items: center;
       padding: 20px;
       margin: 0;
+      height: 100vh;
+      overflow-y: auto;
     }
     h1 {
       margin-bottom: 20px;
+      text-align: center;
     }
     #auth-section, #admin-section {
       width: 100%;
@@ -67,6 +70,12 @@
     label {
       margin-top: 10px;
     }
+    /* Responsividade */
+    @media (max-width: 600px) {
+      #auth-section, #admin-section {
+        max-width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -109,12 +118,24 @@
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'system') {
-        console.log('Sistema:', data.message);
+        if (data.message === 'Autenticado como administrador.') {
+          document.getElementById('auth-section').classList.add('hidden');
+          document.getElementById('admin-section').classList.remove('hidden');
+          displayManageUserMessage('Autenticado com sucesso!', 'success');
+          loadUsers();
+        } else if (data.message === 'Senha de administrador incorreta.') {
+          displayAuthMessage('Senha incorreta. Tente novamente.', 'error');
+        } else {
+          console.log('Sistema:', data.message);
+        }
+      } else if (data.type === 'user_list') {
+        populateUserSelect(data.users);
       }
     };
 
     ws.onclose = () => {
       console.log('Desconectado do servidor WebSocket');
+      displayManageUserMessage('Desconectado do servidor.', 'error');
     };
 
     function authenticate() {
@@ -141,36 +162,7 @@
       const msgElem = document.getElementById('manage-user-message');
       msgElem.textContent = message;
       msgElem.className = type;
-      setTimeout(() => { msgElem.textContent = ''; msgElem.className = ''; }, 3000);
-    }
-
-    // Escuta mensagens do servidor para autenticação
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'system') {
-        if (data.message === 'Autenticado como administrador.') {
-          document.getElementById('auth-section').classList.add('hidden');
-          document.getElementById('admin-section').classList.remove('hidden');
-          displayManageUserMessage('Autenticado com sucesso!', 'success');
-          loadUsers();
-        } else if (data.message === 'Senha de administrador incorreta.') {
-          displayAuthMessage('Senha incorreta. Tente novamente.', 'error');
-        } else {
-          console.log('Sistema:', data.message);
-        }
-      }
-    };
-
-    // Função para carregar usuários conectados no select
-    function loadUsers() {
-      // Solicita a lista de usuários conectados
-      // Como não temos uma implementação específica para isso, vamos simular
-      // Você pode implementar um comando especial no servidor para listar usuários
-      // Por simplicidade, aqui vamos usar a lista de clientes no servidor
-      // Isso exigiria uma modificação no servidor para enviar a lista de usuários para os admins
-      // Para simplificar, não implementaremos isso agora
-      // Você precisaria implementar isso conforme sua necessidade
-      displayManageUserMessage('Funcionalidade de listar usuários ainda não implementada.', 'error');
+      setTimeout(() => { msgElem.textContent = ''; msgElem.className = ''; }, 5000);
     }
 
     // Funções para mutar, desmutar, banir e desbanir usuários
@@ -241,6 +233,31 @@
       };
       ws.send(JSON.stringify(data));
       displayManageUserMessage(`Comando "${command}" enviado.`, 'success');
+    }
+
+    // Popula o select de usuários conectados
+    function populateUserSelect(users) {
+      const userSelect = document.getElementById('user-select');
+      userSelect.innerHTML = ''; // Limpa opções anteriores
+      users.forEach((user) => {
+        if (user.toLowerCase() !== 'anônimo') { // Evita adicionar 'Anônimo'
+          const option = document.createElement('option');
+          option.value = user;
+          option.textContent = user;
+          userSelect.appendChild(option);
+        }
+      });
+    }
+
+    // Função para carregar usuários conectados
+    function loadUsers() {
+      // Envia o comando para listar usuários
+      const command = '+list_users';
+      const data = {
+        type: 'message',
+        message: command
+      };
+      ws.send(JSON.stringify(data));
     }
   </script>
 </body>

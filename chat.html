@@ -7,7 +7,7 @@
   <style>
     @font-face {
       font-family: 'PressStart2P';
-      src: url('PressStart2P') format('truetype');
+      src: url('PressStart2P.ttf') format('truetype');
     }
     body {
       background-color: #000;
@@ -77,6 +77,12 @@
       padding: 10px;
       display: none;
     }
+    /* Feedback de erro */
+    #error-message {
+      color: #f00;
+      text-align: center;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
@@ -87,11 +93,13 @@
     <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
   </form>
+  <div id="error-message"></div>
 
   <script>
     const username = sessionStorage.getItem('username') || 'Anônimo';
     const chatContainer = document.getElementById('chat-container');
     const mutedBanner = document.getElementById('muted-banner');
+    const errorMessage = document.getElementById('error-message');
     let isMuted = false;
 
     // Conexão WebSocket (ajuste a URL se estiver rodando em outro host)
@@ -124,6 +132,11 @@
             isMuted = false;
             toggleMuteUI(false);
           }
+          // Verifica se o usuário foi banido
+          if (data.message.includes('banido') && data.message.includes(`@${username}`)) {
+            alert('Você foi banido do chat.');
+            ws.close();
+          }
           break;
         case 'message':
           addChatMessage(data.username, data.message);
@@ -134,8 +147,8 @@
         case 'clear':
           clearChat();
           break;
-        case 'ban':
-          // Implementação opcional: Desconectar o usuário
+        case 'user_list':
+          populateUserSelect(data.users);
           break;
         default:
           console.log('Tipo de mensagem não reconhecido:', data.type);
@@ -150,8 +163,10 @@
     // Envia mensagens
     function sendMessage(event) {
       event.preventDefault();
+      clearError();
+
       if (isMuted) {
-        alert('Você está mutado e não pode enviar mensagens.');
+        displayError('Você está mutado e não pode enviar mensagens.');
         return;
       }
       const messageInput = document.getElementById('message-input');
@@ -226,6 +241,27 @@
         mutedBanner.style.display = 'none';
       }
     }
+
+    // Funções para mostrar e limpar erros
+    function displayError(message) {
+      errorMessage.textContent = message;
+    }
+
+    function clearError() {
+      errorMessage.textContent = '';
+    }
+
+    // Adiciona um atalho para abrir a página de administração
+    // Pressione "Ctrl + A" para abrir a página de administração
+    document.addEventListener('keydown', function(event) {
+      if (event.ctrlKey && event.key.toLowerCase() === 'a') {
+        window.location.href = 'control_adm.html';
+      }
+    });
+
+    // Função opcional para exibir feedback visual para comandos específicos
+    // Pode ser expandida conforme necessário
+    // Por exemplo, desabilitar o envio de mensagens quando mutado
   </script>
 </body>
 </html>

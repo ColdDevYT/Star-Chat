@@ -44,6 +44,12 @@
     }
     h1 {
       margin-bottom: 30px;
+      text-align: center;
+    }
+    #error-message {
+      color: #f00;
+      text-align: center;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -51,16 +57,29 @@
   <h1>Insira seu Nome de Usuário</h1>
   <input type="text" id="username" placeholder="Nome de usuário">
   <button onclick="proceed()">Entrar</button>
+  <div id="error-message"></div>
 
   <script>
     function proceed() {
-      const username = document.getElementById('username').value.trim();
-      if(username) {
-        sessionStorage.setItem('username', username);
-        window.location.href = 'chat.html';
-      } else {
-        alert('Por favor, insira um nome de usuário.');
+      const usernameInput = document.getElementById('username');
+      const username = usernameInput.value.trim();
+      const errorMessage = document.getElementById('error-message');
+
+      if(!username) {
+        errorMessage.textContent = 'Por favor, insira um nome de usuário.';
+        return;
       }
+
+      // Validar caracteres do nome de usuário (apenas letras, números, _, -)
+      const validNameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+      if(!validNameRegex.test(username)) {
+        errorMessage.textContent = 'Nome de usuário inválido. Use 3-20 caracteres: letras, números, "_" ou "-".';
+        return;
+      }
+
+      // Salva o nome no sessionStorage
+      sessionStorage.setItem('username', username);
+      window.location.href = 'chat.html';
     }
   </script>
 </body>
