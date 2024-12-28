@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Starchat - Administração</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    @font-face {
+      font-family: 'PressStart2P';
+      src: url('PressStart2P.ttf') format('truetype');
+    }
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'PressStart2P', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    #auth-section, #admin-section {
+      width: 100%;
+      max-width: 500px;
+      background-color: #111;
+      padding: 20px;
+      border: 2px solid #fff;
+      margin-bottom: 20px;
+      border-radius: 5px;
+    }
+    input, button, select {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #333;
+      border: none;
+      color: #fff;
+    }
+    button {
+      cursor: pointer;
+      background-color: #555;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #777;
+    }
+    .action-button {
+      background-color: #ff5555;
+    }
+    .action-button:hover {
+      background-color: #ff7777;
+    }
+    .success {
+      color: #0f0;
+    }
+    .error {
+      color: #f00;
+    }
+    .hidden {
+      display: none;
+    }
+    label {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Controle de Administração - Starchat</h1>
+
+  <div id="auth-section">
+    <h2>Autenticação</h2>
+    <input type="password" id="admin-password" placeholder="Senha do Administrador">
+    <button onclick="authenticate()">Autenticar</button>
+    <p id="auth-message"></p>
+  </div>
+
+  <div id="admin-section" class="hidden">
+    <h2>Adicionar Administrador</h2>
+    <input type="text" id="new-admin-nick" placeholder="Nome de usuário">
+    <button onclick="addAdmin()">Adicionar Admin</button>
+    <p id="add-admin-message"></p>
+
+    <h2>Gerenciar Usuários</h2>
+    <label for="user-select">Selecionar Usuário:</label>
+    <select id="user-select">
+      <!-- Opções serão preenchidas dinamicamente -->
+    </select>
+
+    <button class="action-button" onclick="muteUser()">Mutar</button>
+    <button class="action-button" onclick="unmuteUser()">Desmutar</button>
+    <button class="action-button" onclick="banUser()">Banir</button>
+    <button class="action-button" onclick="unbanUser()">Desbanir</button>
+
+    <p id="manage-user-message"></p>
+  </div>
+
+  <script>
+    const ws = new WebSocket(`wss://${window.location.host}`);
+
+    ws.onopen = () => {
+      console.log('Conectado ao servidor WebSocket');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'system') {
+        console.log('Sistema:', data.message);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('Desconectado do servidor WebSocket');
+    };
+
+    function authenticate() {
+      const password = document.getElementById('admin-password').value.trim();
+      if (!password) {
+        displayAuthMessage('Por favor, insira a senha.', 'error');
+        return;
+      }
+
+      const authData = {
+        type: 'admin_auth',
+        password: password
+      };
+      ws.send(JSON.stringify(authData));
+    }
+
+    function displayAuthMessage(message, type) {
+      const msgElem = document.getElementById('auth-message');
+      msgElem.textContent = message;
+      msgElem.className = type;
+    }
+
+    function displayManageUserMessage(message, type) {
+      const msgElem = document.getElementById('manage-user-message');
+      msgElem.textContent = message;
+      msgElem.className = type;
+      setTimeout(() => { msgElem.textContent = ''; msgElem.className = ''; }, 3000);
+    }
+
+    // Escuta mensagens do servidor para autenticação
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'system') {
+        if (data.message === 'Autenticado como administrador.') {
+          document.getElementById('auth-section').classList.add('hidden');
+          document.getElementById('admin-section').classList.remove('hidden');
+          displayManageUserMessage('Autenticado com sucesso!', 'success');
+          loadUsers();
+        } else if (data.message === 'Senha de administrador incorreta.') {
+          displayAuthMessage('Senha incorreta. Tente novamente.', 'error');
+        } else {
+          console.log('Sistema:', data.message);
+        }
+      }
+    };
+
+    // Função para carregar usuários conectados no select
+    function loadUsers() {
+      // Solicita a lista de usuários conectados
+      // Como não temos uma implementação específica para isso, vamos simular
+      // Você pode implementar um comando especial no servidor para listar usuários
+      // Por simplicidade, aqui vamos usar a lista de clientes no servidor
+      // Isso exigiria uma modificação no servidor para enviar a lista de usuários para os admins
+      // Para simplificar, não implementaremos isso agora
+      // Você precisaria implementar isso conforme sua necessidade
+      displayManageUserMessage('Funcionalidade de listar usuários ainda não implementada.', 'error');
+    }
+
+    // Funções para mutar, desmutar, banir e desbanir usuários
+    function muteUser() {
+      const userSelect = document.getElementById('user-select');
+      const selectedUser = userSelect.value;
+      if (!selectedUser) {
+        displayManageUserMessage('Selecione um usuário.', 'error');
+        return;
+      }
+      const command = `+mute @${selectedUser}`;
+      sendAdminCommand(command);
+    }
+
+    function unmuteUser() {
+      const userSelect = document.getElementById('user-select');
+      const selectedUser = userSelect.value;
+      if (!selectedUser) {
+        displayManageUserMessage('Selecione um usuário.', 'error');
+        return;
+      }
+      const command = `+unmute @${selectedUser}`;
+      sendAdminCommand(command);
+    }
+
+    function banUser() {
+      const userSelect = document.getElementById('user-select');
+      const selectedUser = userSelect.value;
+      if (!selectedUser) {
+        displayManageUserMessage('Selecione um usuário.', 'error');
+        return;
+      }
+      const command = `+ban @${selectedUser}`;
+      sendAdminCommand(command);
+    }
+
+    function unbanUser() {
+      const userSelect = document.getElementById('user-select');
+      const selectedUser = userSelect.value;
+      if (!selectedUser) {
+        displayManageUserMessage('Selecione um usuário.', 'error');
+        return;
+      }
+      const command = `+unban @${selectedUser}`;
+      sendAdminCommand(command);
+    }
+
+    function addAdmin() {
+      const newAdminNick = document.getElementById('new-admin-nick').value.trim();
+      if (!newAdminNick) {
+        displayManageUserMessage('Insira o nome de usuário para adicionar como admin.', 'error');
+        return;
+      }
+      const addAdminData = {
+        type: 'add_admin',
+        new_admin: newAdminNick
+      };
+      ws.send(JSON.stringify(addAdminData));
+      displayManageUserMessage(`Solicitação para adicionar @${newAdminNick} como admin enviada.`, 'success');
+      document.getElementById('new-admin-nick').value = '';
+    }
+
+    function sendAdminCommand(command) {
+      // Envia o comando como se fosse uma mensagem de chat
+      const data = {
+        type: 'message',
+        message: command
+      };
+      ws.send(JSON.stringify(data));
+      displayManageUserMessage(`Comando "${command}" enviado.`, 'success');
+    }
+  </script>
+</body>
+</html>
