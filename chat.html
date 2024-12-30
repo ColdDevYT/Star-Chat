@@ -2,12 +2,12 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Starchat - Chat</title>
+  <title>Starchat 2.0 - Chat</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
       font-family: 'PressStart2P';
-      src: url('PressStart2P.ttf') format('truetype');
+      src: url('press-start-2p.ttf');
     }
     body {
       background-color: #000;
@@ -53,15 +53,19 @@
       margin-bottom: 10px;
       line-height: 1.4;
     }
+    .message-id {
+      color: #888;
+      margin-right: 8px;
+    }
     .username {
       font-weight: bold;
       margin-right: 5px;
     }
     .mention {
-      color: #ff0; /* Destaque para menções */
+      color: #ff0; /* destaque para menções */
     }
     a {
-      color: #0ff; /* Destaque para links */
+      color: #0ff; /* destaque para links */
       text-decoration: underline;
     }
     b {
@@ -70,43 +74,36 @@
     i {
       font-style: italic;
     }
+    del {
+      text-decoration: line-through;
+    }
   </style>
 </head>
 <body>
   <div id="chat-container"></div>
-
   <form id="message-form" onsubmit="sendMessage(event)">
-    <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
+    <input type="text" id="message-input" placeholder="Digite sua mensagem..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
   </form>
 
   <script>
     const username = sessionStorage.getItem('username') || 'Anônimo';
     const chatContainer = document.getElementById('chat-container');
-
-    // Conexão WebSocket (ajuste a URL se estiver rodando em outro host)
     const ws = new WebSocket(`wss://${window.location.host}`);
 
-    // Quando a conexão abre, enviamos nosso username
     ws.onopen = () => {
-      console.log('Conectado ao servidor WebSocket');
-      const connectData = {
-        type: 'connect',
-        username: username
-      };
-      ws.send(JSON.stringify(connectData));
+      console.log('[Chat] Conectado ao servidor WS');
+      ws.send(JSON.stringify({ type: 'connect', username }));
     };
 
-    // Recebe mensagens do servidor
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-
-      switch(data.type) {
+      switch (data.type) {
         case 'system':
           addSystemMessage(data.message);
           break;
         case 'message':
-          addChatMessage(data.username, data.message);
+          addChatMessage(data.username, data.message, data.messageId);
           break;
         case 'private':
           addPrivateMessage(data.from, data.message);
@@ -115,64 +112,52 @@
           clearChat();
           break;
         default:
-          console.log('Tipo de mensagem não reconhecido:', data.type);
+          console.log('[Chat] Tipo de mensagem desconhecido:', data);
       }
     };
 
     ws.onclose = () => {
-      console.log('Desconectado do servidor WebSocket');
+      console.log('[Chat] WS fechado');
       addSystemMessage('Você foi desconectado do servidor.');
     };
 
-    // Envia mensagens
-    function sendMessage(event) {
-      event.preventDefault();
-      const messageInput = document.getElementById('message-input');
-      const message = messageInput.value.trim();
-      if(!message) return;
-
-      const data = {
-        type: 'message',
-        username: username,
-        message: message
-      };
-      ws.send(JSON.stringify(data));
-      messageInput.value = '';
+    function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('message-input');
+      const text = input.value.trim();
+      if (!text) return;
+      ws.send(JSON.stringify({ type: 'message', message: text }));
+      input.value = '';
     }
 
-    // Adiciona mensagem normal ao chat
-    function addChatMessage(sender, msg) {
+    function addChatMessage(sender, msg, msgId) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message');
-      msgDiv.innerHTML = `<span class="username">${sender}:</span> ${msg}`;
+      msgDiv.innerHTML = `<span class="message-id">[${msgId}]</span> <span class="username">${sender}:</span> ${msg}`;
       chatContainer.appendChild(msgDiv);
       scrollToBottom();
     }
 
-    // Adiciona mensagem do sistema
     function addSystemMessage(msg) {
-      const msgDiv = document.createElement('div');
-      msgDiv.classList.add('message');
-      msgDiv.innerHTML = `<span style="color: #0f0;">[Sistema]</span> ${msg}`;
-      chatContainer.appendChild(msgDiv);
+      const div = document.createElement('div');
+      div.classList.add('message');
+      div.innerHTML = `<span style="color: #0f0;">[Sistema]</span> ${msg}`;
+      chatContainer.appendChild(div);
       scrollToBottom();
     }
 
-    // Adiciona mensagem privada
     function addPrivateMessage(sender, msg) {
-      const msgDiv = document.createElement('div');
-      msgDiv.classList.add('message');
-      msgDiv.innerHTML = `<span style="color: #ff8080;">[Privado de ${sender}]</span> ${msg}`;
-      chatContainer.appendChild(msgDiv);
+      const div = document.createElement('div');
+      div.classList.add('message');
+      div.innerHTML = `<span style="color: #ff8080;">[Privado de ${sender}]</span> ${msg}`;
+      chatContainer.appendChild(div);
       scrollToBottom();
     }
 
-    // Limpa o chat
     function clearChat() {
       chatContainer.innerHTML = '';
     }
 
-    // Mantém sempre no final do scroll
     function scrollToBottom() {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }

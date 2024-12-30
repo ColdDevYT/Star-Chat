@@ -2,12 +2,12 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Starchat - Nome de Usuário</title>
+  <title>Starchat 2.0 - Nome de Usuário</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
       font-family: 'PressStart2P';
-      src: url('PressStart2P.ttf') format('truetype');
+      src: url('press-start-2p.ttf');
     }
     body {
       background-color: #000;
@@ -55,7 +55,7 @@
   <script>
     function proceed() {
       const username = document.getElementById('username').value.trim();
-      if(username) {
+      if (username) {
         sessionStorage.setItem('username', username);
         window.location.href = 'chat.html';
       } else {
