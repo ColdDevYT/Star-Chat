@@ -10,100 +10,67 @@
       src: url('press-start-2p.ttf');
     }
     body {
-      background-color: #000;
-      color: #fff;
+      background-color: #000; color: #fff;
       font-family: 'PressStart2P', monospace;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      margin: 0;
+      display: flex; flex-direction: column;
+      height: 100vh; margin: 0;
     }
     #chat-container {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-      background-color: #111;
+      flex: 1; padding: 20px; overflow-y: auto; background-color: #111;
     }
     #message-form {
-      display: flex;
-      padding: 10px;
-      background-color: #222;
+      display: flex; padding: 10px; background-color: #222;
     }
     #message-input {
-      flex: 1;
-      padding: 10px;
-      font-size: 16px;
-      background-color: #333;
-      border: none;
-      color: #fff;
+      flex: 1; padding: 10px; background-color: #333; border: none; color: #fff;
     }
     #send-button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #fff;
-      color: #000;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.3s;
+      padding: 10px 20px; background-color: #fff; color: #000; border: none; cursor: pointer;
     }
-    #send-button:hover {
-      background-color: #ccc;
-    }
-    .message {
-      margin-bottom: 10px;
-      line-height: 1.4;
-    }
-    .message-id {
-      color: #888;
-      margin-right: 8px;
-    }
-    .username {
-      font-weight: bold;
-      margin-right: 5px;
-    }
-    .mention {
-      color: #ff0; /* destaque para menções */
-    }
-    a {
-      color: #0ff; /* destaque para links */
-      text-decoration: underline;
-    }
-    b {
-      font-weight: bold;
-    }
-    i {
-      font-style: italic;
-    }
-    del {
-      text-decoration: line-through;
-    }
+    .message { margin-bottom: 10px; line-height: 1.4; }
+    .mention { color: #ff0; }
+    a { color: #0ff; text-decoration: underline; }
+    b { font-weight: bold; }
+    i { font-style: italic; }
+    .ephemeral { color: #0f0; }
+    .system { color: #0f0; }
   </style>
 </head>
 <body>
   <div id="chat-container"></div>
+
   <form id="message-form" onsubmit="sendMessage(event)">
-    <input type="text" id="message-input" placeholder="Digite sua mensagem..." autocomplete="off">
+    <input type="text" id="message-input" placeholder="Digite sua mensagem ou comando..." autocomplete="off">
     <button type="submit" id="send-button">Enviar</button>
   </form>
 
   <script>
     const username = sessionStorage.getItem('username') || 'Anônimo';
+    const avatar = sessionStorage.getItem('avatar') || null;
+    const room = sessionStorage.getItem('room') || 'geral';
+
     const chatContainer = document.getElementById('chat-container');
+
+    // Conecta via WebSocket
     const ws = new WebSocket(`wss://${window.location.host}`);
 
     ws.onopen = () => {
-      console.log('[Chat] Conectado ao servidor WS');
-      ws.send(JSON.stringify({ type: 'connect', username }));
+      console.log('[CHAT] Conectado ao servidor.');
+      ws.send(JSON.stringify({
+        type: 'connect',
+        username,
+        avatar
+      }));
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      switch (data.type) {
+      switch(data.type) {
         case 'system':
           addSystemMessage(data.message);
           break;
         case 'message':
-          addChatMessage(data.username, data.message, data.messageId);
+          addChatMessage(data.username, data.message);
           break;
         case 'private':
           addPrivateMessage(data.from, data.message);
@@ -111,37 +78,43 @@
         case 'clear':
           clearChat();
           break;
+        case 'ephemeral':
+          addEphemeralMessage(data.id, data.username, data.message);
+          break;
+        case 'remove_ephemeral':
+          removeEphemeralMessage(data.id);
+          break;
         default:
-          console.log('[Chat] Tipo de mensagem desconhecido:', data);
+          console.warn('Tipo de mensagem não reconhecido:', data.type);
       }
     };
 
     ws.onclose = () => {
-      console.log('[Chat] WS fechado');
-      addSystemMessage('Você foi desconectado do servidor.');
+      console.log('[CHAT] Desconectado do servidor.');
+      addSystemMessage('Você foi desconectado.');
     };
 
     function sendMessage(e) {
       e.preventDefault();
       const input = document.getElementById('message-input');
       const text = input.value.trim();
-      if (!text) return;
+      if(!text) return;
       ws.send(JSON.stringify({ type: 'message', message: text }));
       input.value = '';
     }
 
-    function addChatMessage(sender, msg, msgId) {
-      const msgDiv = document.createElement('div');
-      msgDiv.classList.add('message');
-      msgDiv.innerHTML = `<span class="message-id">[${msgId}]</span> <span class="username">${sender}:</span> ${msg}`;
-      chatContainer.appendChild(msgDiv);
+    function addChatMessage(sender, msg) {
+      const div = document.createElement('div');
+      div.classList.add('message');
+      div.innerHTML = `<b>${sender}:</b> ${msg}`;
+      chatContainer.appendChild(div);
       scrollToBottom();
     }
 
     function addSystemMessage(msg) {
       const div = document.createElement('div');
-      div.classList.add('message');
-      div.innerHTML = `<span style="color: #0f0;">[Sistema]</span> ${msg}`;
+      div.classList.add('message', 'system');
+      div.innerHTML = `[Sistema] ${msg}`;
       chatContainer.appendChild(div);
       scrollToBottom();
     }
@@ -149,9 +122,25 @@
     function addPrivateMessage(sender, msg) {
       const div = document.createElement('div');
       div.classList.add('message');
-      div.innerHTML = `<span style="color: #ff8080;">[Privado de ${sender}]</span> ${msg}`;
+      div.style.color = '#f0f';
+      div.innerHTML = `[Privado de ${sender}] ${msg}`;
       chatContainer.appendChild(div);
       scrollToBottom();
+    }
+
+    // Mensagens efêmeras
+    function addEphemeralMessage(id, sender, msg) {
+      const div = document.createElement('div');
+      div.classList.add('message', 'ephemeral');
+      div.setAttribute('data-eph-id', id);
+      div.innerHTML = `<b>${sender} (efêmera):</b> ${msg}`;
+      chatContainer.appendChild(div);
+      scrollToBottom();
+    }
+
+    function removeEphemeralMessage(id) {
+      const e = document.querySelector(`[data-eph-id="${id}"]`);
+      if (e) e.remove();
     }
 
     function clearChat() {

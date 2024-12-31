@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Starchat 2.0 - Painel ADM</title>
+  <title>Starchat v2.0 - Painel ADM</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <style>
     @font-face {
@@ -13,202 +14,136 @@
       background-color: #000;
       color: #fff;
       font-family: 'PressStart2P', monospace;
-      margin: 0;
-      padding: 20px;
+      margin: 0; padding: 20px;
     }
     h1, h2 {
-      margin: 0 0 20px 0;
+      margin: 0 0 10px 0;
     }
-    .admin-section {
-      border: 1px solid #fff;
-      padding: 15px;
-      margin-bottom: 20px;
-    }
-    .user-list, .room-list {
-      list-style: none;
-      padding: 0;
-    }
-    .user-item, .room-item {
-      margin-bottom: 10px;
-    }
-    input, button {
-      font-family: 'PressStart2P', monospace;
-    }
-    input {
-      background-color: #333;
-      color: #fff;
-      border: none;
-      padding: 5px;
-      margin-right: 8px;
-    }
-    button {
-      background-color: #fff;
-      color: #000;
-      border: none;
-      cursor: pointer;
-      padding: 5px 10px;
-      margin: 5px 0;
-    }
-    button:hover {
-      background-color: #ccc;
-    }
-    label {
-      display: inline-block;
-      margin-top: 5px;
-    }
+    .section { border: 1px solid #fff; padding: 10px; margin-bottom: 20px; }
+    button { background-color: #fff; color: #000; border: none; padding: 5px 10px; cursor: pointer; }
+    button:hover { background-color: #ccc; }
+    input { background-color: #333; color: #fff; border: none; padding: 5px; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border: 1px solid #fff; padding: 5px; }
   </style>
 </head>
 <body>
-  <h1>Painel de Controle - Starchat 2.0</h1>
+  <h1>Painel ADM - Starchat v2.0</h1>
 
-  <!-- Adicionar Admin -->
-  <div class="admin-section">
-    <h2>Adicionar Admin</h2>
-    <input type="text" id="newAdminNick" placeholder="Nome do usuário">
+  <div class="section">
+    <h2>Adicionar Novo Admin</h2>
+    <input type="text" id="newAdminNick" placeholder="Nick do usuário">
     <button onclick="addAdmin()">Adicionar Admin</button>
   </div>
 
-  <!-- Definir Moderador -->
-  <div class="admin-section">
-    <h2>Definir Moderador</h2>
-    <input type="text" id="modNick" placeholder="Nome do usuário">
-    <button onclick="setMod()">Definir como Moderador</button>
+  <div class="section">
+    <h2>Logs de Mensagens (últimas 100)</h2>
+    <button onclick="fetchData()">Atualizar Logs</button>
+    <table id="logsTable">
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Usuário</th>
+          <th>Sala</th>
+          <th>Mensagem</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </div>
 
-  <!-- Lista de usuários online -->
-  <div class="admin-section">
-    <h2>Usuários Online</h2>
-    <ul id="onlineUsers" class="user-list"></ul>
-  </div>
-
-  <!-- Lista de canais -->
-  <div class="admin-section">
-    <h2>Canais Existentes</h2>
-    <ul id="roomList" class="room-list"></ul>
+  <div class="section">
+    <h2>Relatórios</h2>
+    <button onclick="fetchData()">Atualizar Reports</button>
+    <table id="reportsTable">
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Reporter</th>
+          <th>Reportado</th>
+          <th>Motivo</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </div>
 
   <script>
-    // Helper para pegar a senha da query
-    function getParameterByName(name) {
-      const url = window.location.href;
-      name = name.replace(/[\\[\]]/g, '\\$&');
-      const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
-      const results = regex.exec(url);
-      if (!results) return null;
-      if (!results[2]) return '';
-      return decodeURIComponent(results[2].replace(/\+/g, ' '));
-    }
+    const passParam = new URLSearchParams(window.location.search).get('admin_pass');
 
-    const adminPass = getParameterByName('admin_pass') || '';
-
-    // Conexão WebSocket
-    const ws = new WebSocket(`wss://${window.location.host}`);
-
-    ws.onopen = () => {
-      console.log('[ADM] Conexão WS estabelecida');
-      // Conecta sem exibir no chat, ou com nome 'PainelADM'
-      ws.send(JSON.stringify({ type: 'connect', username: 'PainelADM' }));
-      // Vamos solicitar dados de usuários/canais.  
-      // Precisamos implementar +who e +list_rooms (ou algo similar) no server.  
-      // Como exemplo, faremos sim: ws.send({ type: 'message', message: '+who' }); etc.
-      // Por questão de exemplo, vamos suprimir e só exibir 'vazio' na UI.
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      // Precisamos de algo como data.type === 'users_list', data.users, etc.  
-      // Caso implementemos +who no server, ele poderia retornar type: 'users_list'.  
-      // Aqui iremos ficar só no esqueleto. Você pode criar seu comando no server e,
-      // ao recebê-lo, popular a lista.
-
-      console.log('[ADM] Mensagem WS:', data);
-    };
-
-    ws.onclose = () => {
-      console.log('[ADM] WS desconectado');
-    };
-
-    // Envio de comandos para ban/mute/unmute, etc.
-    function banUser(nick) {
-      const cmd = `+ban ${nick}`;
-      sendCommand(cmd);
-    }
-    function unbanUser(nick) {
-      const cmd = `+unban ${nick}`;
-      sendCommand(cmd);
-    }
-    function muteUser(nick) {
-      const cmd = `+mute ${nick}`;
-      sendCommand(cmd);
-    }
-    function unmuteUser(nick) {
-      const cmd = `+unmute ${nick}`;
-      sendCommand(cmd);
-    }
-    // Função genérica para mandar comandos como se estivesse no chat
-    function sendCommand(cmd) {
-      ws.send(JSON.stringify({ type: 'message', message: cmd }));
-    }
-
-    // Adicionar Admin
     function addAdmin() {
       const nick = document.getElementById('newAdminNick').value.trim();
-      if (!nick) {
-        alert('Informe o nick');
-        return;
-      }
+      if (!nick) return alert('Informe o nick');
       fetch('/adm/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nick, admin_pass: adminPass })
+        body: JSON.stringify({ nick, admin_pass: passParam })
       })
-        .then(res => {
-          if (res.ok) {
-            return res.json();
-          }
-          throw new Error(`Falha: ${res.status}`);
-        })
+      .then(res => {
+        if (res.status === 200) return res.json();
+        throw res;
+      })
+      .then(json => {
+        alert(json.message);
+      })
+      .catch(async err => {
+        let msg = 'Erro ao adicionar admin.';
+        if (err.json) {
+          const e = await err.json();
+          msg = e.error || msg;
+        }
+        alert(msg);
+      });
+    }
+
+    function fetchData() {
+      fetch(`/adm/data?admin_pass=${passParam}`)
+        .then(res => res.json())
         .then(json => {
-          alert(json.message || 'Admin adicionado');
+          renderLogs(json.logs);
+          renderReports(json.reports);
         })
         .catch(err => {
-          alert('Erro ao adicionar admin');
           console.error(err);
+          alert('Erro ao obter dados ADM.');
         });
     }
 
-    // Definir Moderador
-    function setMod() {
-      const nick = document.getElementById('modNick').value.trim();
-      if (!nick) {
-        alert('Informe o nick');
-        return;
-      }
-      fetch('/adm/setmod', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nick, admin_pass: adminPass })
-      })
-        .then(res => {
-          if (res.ok) {
-            return res.json();
-          }
-          throw new Error(`Falha: ${res.status}`);
-        })
-        .then(json => {
-          alert(json.message || 'Usuário agora é Mod');
-        })
-        .catch(err => {
-          alert('Erro ao definir Mod');
-          console.error(err);
-        });
+    function renderLogs(logs) {
+      const tbody = document.querySelector('#logsTable tbody');
+      tbody.innerHTML = '';
+      logs.forEach(log => {
+        // log: { type, room, username, message, timestamp }
+        if (log.type !== 'message') return; // iremos só mostrar "message"
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${log.timestamp}</td>
+          <td>${log.username}</td>
+          <td>${log.room}</td>
+          <td>${log.message}</td>
+        `;
+        tbody.appendChild(tr);
+      });
     }
 
-    // TODO: Exibir usuários online e canais
-    // Precisaríamos de comandos extra no server, ex.:
-    // +who => server retorna { type: 'users_list', users: ['Fulano', ...] }
-    // +list_rooms => { type: 'rooms_list', rooms: ['geral', 'dev', ...] }
-    // A cada clique, atualizamos <ul> do HTML, ban, etc.
+    function renderReports(reps) {
+      const tbody = document.querySelector('#reportsTable tbody');
+      tbody.innerHTML = '';
+      reps.forEach(rep => {
+        // { reporter, reported, reason, timestamp }
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${rep.timestamp}</td>
+          <td>${rep.reporter}</td>
+          <td>${rep.reported}</td>
+          <td>${rep.reason}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Carrega logs e reports assim que abre o painel
+    fetchData();
   </script>
 </body>
 </html>

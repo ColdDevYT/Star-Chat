@@ -10,57 +10,41 @@
       src: url('press-start-2p.ttf');
     }
     body {
-      background-color: #000;
-      color: #fff;
+      background-color: #000; color: #fff;
       font-family: 'PressStart2P', monospace;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      flex-direction: column;
-      margin: 0;
+      display: flex; justify-content: center; align-items: center;
+      flex-direction: column; height: 100vh; margin: 0;
     }
     input {
-      padding: 10px;
-      font-size: 16px;
-      margin-bottom: 20px;
-      width: 250px;
-      background-color: #333;
-      border: none;
-      color: #fff;
+      padding: 10px; margin: 5px; background-color: #333; border: none; color: #fff;
       text-align: center;
     }
     button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #fff;
-      color: #000;
-      border: none;
-      cursor: pointer;
-      transition: background-color 0.3s;
-    }
-    button:hover {
-      background-color: #ccc;
-    }
-    h1 {
-      margin-bottom: 30px;
+      padding: 10px 20px; background-color: #fff; color: #000; border: none; cursor: pointer;
+      margin: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>Insira seu Nome de Usuário</h1>
-  <input type="text" id="username" placeholder="Nome de usuário">
+  <h1>Escolha seu Nome</h1>
+  <input type="text" id="username" placeholder="Nome de usuário" />
+  <input type="text" id="avatar" placeholder="URL do avatar (opcional)" />
+  <input type="text" id="room" placeholder="Sala inicial (opcional, padrão: geral)" />
   <button onclick="proceed()">Entrar</button>
 
   <script>
     function proceed() {
-      const username = document.getElementById('username').value.trim();
-      if (username) {
-        sessionStorage.setItem('username', username);
-        window.location.href = 'chat.html';
-      } else {
-        alert('Por favor, insira um nome de usuário.');
+      const user = document.getElementById('username').value.trim();
+      const avatar = document.getElementById('avatar').value.trim();
+      const room = document.getElementById('room').value.trim();
+      if (!user) {
+        alert('Informe um nome de usuário.');
+        return;
       }
+      sessionStorage.setItem('username', user);
+      sessionStorage.setItem('avatar', avatar);
+      sessionStorage.setItem('room', room || 'geral');
+      window.location.href = 'chat.html';
     }
   </script>
 </body>
